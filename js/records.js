@@ -26,18 +26,21 @@ function titleFor(rating) {
 }
 
 // How well you boxed, whatever the round length: accuracy counts most, then
-// timing, then defense (when the coach threw anything back). Rounds with too
-// few pads to judge get no grade.
-export function gradeFor(r) {
+// timing, then form (clean punches rather than sloppy ones, camera rounds
+// only), then defense (when the coach threw anything back). Rounds with too few
+// pads to judge get no grade.
+export function gradeFor(r, { tapMode = false } = {}) {
   if (r.total < 8) return null;
   const accuracy = r.hits / r.total;
   const timing = r.hits ? (r.perfect + 0.7 * r.great + 0.4 * r.good) / r.hits : 0;
-  const parts = [[0.5, accuracy], [0.35, timing]];
+  const form = r.hits ? (r.clean ?? r.hits) / r.hits : 0;
+  const parts = [[0.4, accuracy], [0.25, timing]];
+  if (!tapMode) parts.push([0.2, form]);
   if (r.ducks > 0) parts.push([0.15, r.slips / r.ducks]);
   const weight = parts.reduce((a, [w]) => a + w, 0);
   const rating = Math.round((100 * parts.reduce((a, [w, v]) => a + w * v, 0)) / weight);
   const letter = LETTERS.find(([min]) => rating >= min)[1];
-  return { letter, rating, title: titleFor(rating), accuracy, timing };
+  return { letter, rating, title: titleFor(rating), accuracy, timing, form };
 }
 
 // ---------------------------------------------------------------- leaderboard
@@ -164,7 +167,7 @@ export function cornerNotes(r, { tapMode, dodges }) {
     if (n < 3) continue;
     const acc = t.hit / n;
     if (acc < 0.85) work.push({ w: (1 - acc) * n, text: `${g.name}: ${t.hit} of ${n} landed. ${tapMode ? 'Tap them as the ring closes.' : g.fix}` });
-    else if (n >= 4) good.push({ w: acc * n, text: `Sharp ${g.short}: ${t.hit} of ${n} landed.` });
+    else if (n >= 4) good.push({ w: acc * n, text: `Accurate ${g.short}: ${t.hit} of ${n} landed.` });
   }
 
   // One hand much weaker than the other.
@@ -193,6 +196,18 @@ export function cornerNotes(r, { tapMode, dodges }) {
     if (perfectShare >= 0.6) good.push({ w: perfectShare * 10, text: `Great timing: ${pct(perfectShare)} of your hits were PERFECT.` });
   }
   if ((r.early || 0) >= 3 && r.early >= 0.08 * r.total) work.push({ w: r.early * 0.8, text: `${r.early} ${tapMode ? 'taps' : 'punches'} came before the pad lit up. Wait for it to glow.` });
+
+  // Technique: swings that weren't punches, and sloppy ones.
+  if (!tapMode) {
+    const f = r.flaws || {};
+    if ((r.noPunch || 0) >= 3) work.push({ w: r.noPunch * 0.9, text: `${r.noPunch} swings didn't count as punches. Start each one with your fists up by your chin, punch straight out to the pad, and bring it back.` });
+    if ((f.extend || 0) >= 2) work.push({ w: f.extend * 1.2, text: `${f.extend} jabs and crosses were sloppy: the arm didn't straighten. Drive the fist all the way out to the pad, then snap it back.` });
+    if ((f.elbow || 0) >= 2) work.push({ w: f.elbow * 1.2, text: `${f.elbow} hooks came in with the elbow low. Lift the elbow to shoulder height and swing through.` });
+    if ((f.bent || 0) >= 2) work.push({ w: f.bent * 1.2, text: `${f.bent} hooks or uppercuts were straight-arm swings. Keep the elbow bent and drive from your legs.` });
+    if ((f.snap || 0) >= 3) work.push({ w: f.snap, text: `${f.snap} punches were slow pushes. Snap them out and back.` });
+    if ((r.punches || 0) >= 8 && r.handsDown / r.punches >= 0.3) work.push({ w: (r.handsDown / r.punches) * 10, text: `Your other hand dropped on ${pct(r.handsDown / r.punches)} of your punches. Keep it up by your chin while the other one works.` });
+    if (r.hits >= 8 && (r.clean ?? 0) / r.hits >= 0.9) good.push({ w: 9, text: `Clean technique: ${pct(r.clean / r.hits)} of your punches were clean.` });
+  }
 
   // Defense.
   if (dodges && !tapMode && r.ducks > 0) {

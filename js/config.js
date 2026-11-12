@@ -73,7 +73,8 @@ export const HIT = {
   approach: 0.16,  // the fist must end at least this much closer to the pad (shoulder widths)
   travel: 0.27,    // ...after moving at least this far, so a twitch or a resting fist never counts
   outward: 0.1,    // ...and moving out from the body, so pulling a fist back is never a punch
-  upperRise: 0.3,  // uppercut pads need the fist to travel up at least this far
+  upperRise: 0.3,  // uppercut pads need the fist to travel up at least this far...
+  upperFrom: 0.1,  // ...starting no higher than this above the pad's center (shoulder widths)
   reach: 1.3,      // hit radius as a multiple of the drawn pad radius
   fist: 0.1,       // plus the size of the fist itself (shoulder widths)
   deep: 0.5,       // inside this share of the pad radius a hit counts at once
@@ -85,7 +86,33 @@ export const HIT = {
   earlyQuiet: 300, // no EARLY within this many ms of any hit
   rearmSpeed: 0.9, // after a hit, that fist counts again once it slows below this (shoulder widths/s)
   rearmMax: 450,   // ...or pulls back, or after this many ms at the latest
-  hold: 150,       // a pad waits for an earlier pad for the same hand until this long past its ideal moment
+  minShow: 550,    // one pad per hand is shown at a time; each gets at least this long on screen
+};
+
+// Punch form. A punch leaves the guard (fist within guardZone shoulder widths
+// of the chin, elbow bent) in the last guardLook ms, reaches the pad within
+// maxReach ms on a fairly direct line (an uppercut dips first), and stops or
+// comes back there instead of carrying on through. Anything else is a hand
+// waving around and doesn't count. A punch with a form flaw is SLOPPY: it takes
+// the pad for sloppyShare of the points and doesn't grow the combo.
+export const FORM = {
+  guardZone: 0.55,
+  guardBend: 0.85,   // in guard the arm is bent: straightness at most this
+  guardLook: 700,
+  maxReach: 450,     // ms from leaving the guard to reaching the pad (straights and hooks)
+  stray: 0.35,       // on the way, the fist strays sideways from the straight line by at most
+  strayMin: 0.22,    // this share of the distance (or this many shoulder widths, if more)
+  carry: 0.3,        // after the pad the fist may carry on this far (shoulder widths)
+  turnBack: 0.05,    // it counts once the fist turns back this far,
+  settle: 160,       // or after this many ms without carrying on
+  hintEvery: 2500,   // ms between "No punch" reminders
+  extend3: 0.2,      // jab/cross: the arm straightens by this much in 3D during the punch...
+  straightArm: 0.8,  // ...and ends at least this straight
+  extend2: 0.18,     // (in the flat image, when there's no 3D estimate)
+  elbowDrop: 0.1,    // hook: elbow no more than this far below the shoulder
+  bentMax: 0.92,     // hook/uppercut: arm no straighter than this (no straight-arm swings)
+  snap: 2.2,         // peak fist speed (shoulder widths per second) for a crisp punch
+  sloppyShare: 0.5,
 };
 
 export const POINTS = { PERFECT: 300, GREAT: 200, GOOD: 100, SLIP: 250 };

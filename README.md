@@ -7,7 +7,7 @@ A boxing pad-work game that runs in the browser on a phone or a laptop. Set the 
 1. **Phone:** lean it against something at about chest height with the screen facing you.
    **Laptop:** set it on a table or counter and tilt the screen so the camera faces the spot where you will stand.
 2. Step back about 6 feet (2 m) so your head, shoulders and both fists are in the shot.
-3. Punch each pad as its white ring closes onto it. You don't have to hit dead center or stop on the pad: driving your fist into it counts.
+3. Keep your fists up by your chin and punch each pad as its white ring closes onto it: straight out from your guard into the pad, then back. You don't have to hit dead center.
 
 Pads use the trainer's number system and are colored by the hand that should throw them:
 
@@ -24,7 +24,14 @@ Southpaw mode swaps lead and rear.
 
 **Timing.** A pad lights up about half a second before its ring closes, and that is when it can be hit. Punch it while it is still dim and you'll see EARLY. Hitting as the ring lands scores PERFECT (300), close to it GREAT (200), otherwise GOOD (100).
 
-**One hand, one pad.** Only the matching fist counts: blue pads take your left, red pads your right. The other hand passing through does nothing. One punch takes one pad: combos go in order, a punch has to move out from your body into the pad (pulling your fist back never counts), and a fist that just landed has to stop or pull back before it can land again, so a follow-through can't knock out the next pad. Single-frame tracking glitches, including the tracker briefly swapping your left and right wrists, are ignored.
+**One hand, one pad.** Each hand has one pad on screen at a time: the next blue pad appears once the current one is hit or missed, and the same for red, so pads never stack up. Only the matching fist counts: blue pads take your left, red pads your right. One punch takes one pad: combos go in order, pulling your fist back never counts, and a fist that just landed has to stop or pull back before it can land again. Single-frame tracking glitches, including the tracker briefly swapping your left and right wrists, are ignored.
+
+**Good hits and bad hits.** Only real punches count. A punch starts from your guard (fist up by your chin, elbow bent), goes fairly straight to the pad, and stops or comes back there; an uppercut comes from below the pad and drives up through it. Waving or swinging your hand through a pad doesn't count, and "NO PUNCH" reminds you now and then. A real punch with sloppy form shows SLOPPY and scores half, without growing your combo:
+- jab or cross: the arm has to straighten into the pad (judged from the tracker's 3D estimate of your arm)
+- hook: elbow up near shoulder height, arm bent
+- uppercut: arm bent, not a straight-arm swing
+- any punch: snap it, not a slow push
+Clean punches get PERFECT, GREAT or GOOD by timing, as before.
 
 **Combo.** Every 5 hits in a row adds x0.25 to your multiplier, up to x4. A miss resets it.
 
@@ -34,9 +41,9 @@ Southpaw mode swaps lead and rear.
 
 **Speed.** Scoring unlocks 8 speed levels with faster pads and longer combinations (1-2, 1-2-3, 1-6-3-2 and so on). The coach calls each combination out loud.
 
-**Grade.** Every round of 8 pads or more gets a letter grade from A+ down to F, with a rating out of 100 and a title from Champion to Tomato can. The grade measures how well you boxed, not how long the round was: accuracy counts 50%, timing 35% (PERFECT counts fully, GREAT 70%, GOOD 40%) and dodging 15% when the coach threw punches back.
+**Grade.** Every round of 8 pads or more gets a letter grade from A+ down to F, with a rating out of 100 and a title from Champion to Tomato can. The grade measures how well you boxed, not how long the round was: accuracy counts 40%, timing 25% (PERFECT counts fully, GREAT 70%, GOOD 40%), clean form 20% (camera rounds) and dodging 15% when the coach threw punches back.
 
-**From your corner.** The scorecard ends with what went well and what to work on next, based on that round. For example, which punch type missed most, whether you were early or late and by how much, a weaker hand, getting caught by the hook, or short combos.
+**From your corner.** The scorecard ends with what went well and what to work on next, based on that round. For example, which punch type missed most, sloppy jabs that didn't straighten, hooks with the elbow low, swings that didn't count as punches, your other hand dropping, whether you were early or late and by how much, getting caught by the hook, or short combos.
 
 **Best to beat and the leaderboard.** The start screen shows the score to beat for the round length you picked, and the score tape shows it during the round, flashing NEW BEST when you pass it. The top 10 rounds for each round length are kept on a leaderboard with name, grade and date. Camera rounds and tap or mouse rounds have separate boards. The leaderboard is stored on this device only.
 

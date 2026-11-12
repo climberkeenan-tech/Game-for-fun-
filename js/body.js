@@ -39,9 +39,16 @@ const NOSE = 0;
 const L_SHOULDER = 11;
 const R_SHOULDER = 12;
 const HANDS = {
-  L: { wrist: 15, pinky: 17, index: 19 },
-  R: { wrist: 16, pinky: 18, index: 20 },
+  L: { shoulder: 11, elbow: 13, wrist: 15, pinky: 17, index: 19 },
+  R: { shoulder: 12, elbow: 14, wrist: 16, pinky: 18, index: 20 },
 };
+
+// How straight an arm is: shoulder-to-wrist distance over the arm's length.
+// About 0.55-0.75 in a guard, close to 1 at the end of a straight punch.
+function straightness(s, e, w) {
+  const arm = Math.hypot(e.x - s.x, e.y - s.y, (e.z || 0) - (s.z || 0)) + Math.hypot(w.x - e.x, w.y - e.y, (w.z || 0) - (e.z || 0));
+  return arm > 0 ? Math.hypot(w.x - s.x, w.y - s.y, (w.z || 0) - (s.z || 0)) / arm : null;
+}
 
 class Hand {
   constructor(key) {
@@ -59,13 +66,14 @@ class Hand {
     this.vy = 0;
   }
 
-  push(x, y, t) {
+  // extra: arm shape at this frame (straightness in 2D and 3D, elbow height).
+  push(x, y, t, extra) {
     this.prev = this.cur;
-    this.cur = { x, y, t };
+    this.cur = { x, y, t, ...extra };
     this.visible = true;
     this.seq++;
     this.hist.push(this.cur);
-    while (this.hist.length > 2 && t - this.hist[0].t > 600) this.hist.shift();
+    while (this.hist.length > 2 && t - this.hist[0].t > 1000) this.hist.shift();
     // Velocity against the oldest sample from the last ~160 ms, so a punch that
     // peaks between camera frames still reads as fast. On slow devices, where
     // frames arrive further apart, fall back to the previous sample.
@@ -150,8 +158,13 @@ export class Body {
       const same = d(wl, pw.L) + d(wr, pw.R);
       const cross = d(wl, pw.R) + d(wr, pw.L);
       if (cross < same * 0.5 && same > 0.5 * (this.S || 150)) {
+        const world = lms.world;
         lms = lms.slice();
         for (const [a, b] of [[13, 14], [15, 16], [17, 18], [19, 20], [21, 22]]) [lms[a], lms[b]] = [lms[b], lms[a]];
+        if (world) {
+          lms.world = world.slice();
+          for (const [a, b] of [[13, 14], [15, 16], [17, 18], [19, 20], [21, 22]]) [lms.world[a], lms.world[b]] = [lms.world[b], lms.world[a]];
+        }
         this.prevWrists = { L: wr, R: wl, t: now };
       } else this.prevWrists = { L: wl, R: wr, t: now };
     } else this.prevWrists = wl && wr ? { L: wl, R: wr, t: now } : null;
@@ -204,7 +217,18 @@ export class Body {
         fx = w.x * 0.4 + ((i.x + k.x) / 2) * 0.6;
         fy = w.y * 0.4 + ((i.y + k.y) / 2) * 0.6;
       }
-      hand.push(fx, fy, now);
+      // Arm shape, for judging punch form. Left out when the elbow or shoulder
+      // isn't tracked well enough to trust.
+      const sh = pts[ids.shoulder];
+      const el = pts[ids.elbow];
+      const extra = {};
+      if (sh.v > 0.5 && el.v > 0.4) {
+        extra.ext2 = straightness(sh, el, w);
+        if (this.S) extra.elbowUp = (sh.y - el.y) / this.S;
+        const W3 = lms.world;
+        if (W3 && W3[ids.wrist] && W3[ids.elbow] && W3[ids.shoulder]) extra.ext3 = straightness(W3[ids.shoulder], W3[ids.elbow], W3[ids.wrist]);
+      }
+      hand.push(fx, fy, now, extra);
       handOk[key] = w.v > 0.6;
     }
 

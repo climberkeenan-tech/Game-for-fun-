@@ -104,6 +104,9 @@ export class Tracker {
       this.measure(performance.now() - t0);
       this.failures = 0;
       const lms = res && res.landmarks && res.landmarks[0] ? res.landmarks[0] : null;
+      // The 3D estimate (meters, centered on the hips) tells how straight an arm
+      // is even when it points at the camera, which the flat image can't show.
+      if (lms && res.worldLandmarks && res.worldLandmarks[0]) lms.world = res.worldLandmarks[0];
       // Some mobile GPUs fail silently: no error, just never a person. If the GPU
       // path has not found anyone in ~300 frames (about 10 s), try the CPU path once.
       if (lms) this.emptyStreak = 0;
