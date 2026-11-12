@@ -38,6 +38,14 @@ function segDist(px, py, ax, ay, bx, by) {
   return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
 }
 
+// A fist sample moved with the body: where it would be if the body were where
+// it is now (the pads' anchor). Bouncing or swaying then doesn't look like a
+// punch; only the arm's own movement does.
+function onBody(s, F) {
+  if (s.cx == null) return s;
+  return { ...s, x: s.x - s.cx + F.ax, y: s.y - s.cy + F.ay };
+}
+
 // Drops single camera frames that jump far from both neighbours while the
 // neighbours stay close together: tracking glitches, not fist movement.
 function dropSpikes(path, S) {
@@ -57,10 +65,18 @@ function dropSpikes(path, S) {
   return out;
 }
 
-// What a sloppy punch should do instead, short enough for the pop-up.
-const FLAW_TIPS = { extend: 'extend the arm', elbow: 'elbow up', bent: 'bend the arm', snap: 'snap it' };
-// Why a motion wasn't a punch, as a one-line fix.
-const NO_PUNCH_TIPS = { guard: 'start from your guard', slow: 'snap it out', curve: 'punch straight to it', through: 'stop at the pad', short: 'reach the pad', low: 'drive up to your chin', bob: 'hands still, then punch' };
+// What a sloppy hit should do instead, short enough for the pop-up.
+const FLAW_TIPS = {
+  guard: 'start from your guard',
+  bob: 'hands still, then punch',
+  curve: 'punch straight to it',
+  slow: 'snap it out',
+  short: 'punch all the way out',
+  extend: 'extend the arm',
+  elbow: 'elbow up',
+  bent: 'bend the arm',
+  snap: 'snap it',
+};
 
 function judgeColor(j) {
   if (j === 'PERFECT') return COLORS.gold;
@@ -117,7 +133,6 @@ export class Game {
     this.restAfter = 0;
     this.lastWasDuck = false;
     this.stats = { hits: 0, clean: 0, sloppy: 0, perfect: 0, great: 0, good: 0, missed: 0, slips: 0, ducks: 0 };
-    this.lastGuardHint = -1e9;
     // Detail for the scorecard's grade and corner notes.
     this.detail = {
       byPunch: { 1: { hit: 0, miss: 0 }, 2: { hit: 0, miss: 0 }, 3: { hit: 0, miss: 0 }, 4: { hit: 0, miss: 0 }, 5: { hit: 0, miss: 0 }, 6: { hit: 0, miss: 0 } },
@@ -125,8 +140,7 @@ export class Game {
       reactionSum: 0,
       reactionN: 0,
       caught: { hook: 0, straight: 0 },
-      flaws: { extend: 0, elbow: 0, bent: 0, snap: 0 },
-      noPunch: 0,
+      flaws: { guard: 0, bob: 0, curve: 0, slow: 0, short: 0, extend: 0, elbow: 0, bent: 0, snap: 0 },
       punches: 0,
       handsDown: 0,
     };
@@ -137,6 +151,7 @@ export class Game {
     this.handUsed = { L: -Infinity, R: -Infinity };
     this.handLanded = { L: null, R: null }; // the last hit's direction, until the fist stops or pulls back
     this.guardSpot = { L: null, R: null }; // where this player holds each fist, relative to the shoulders
+    this.judging = []; // punches that landed and are about to be judged
     this.baseline = !tapMode && body && body.nose ? body.nose.y : null;
     this.lastDuckEnd = -1e9;
     this.padSeq = 0;
@@ -290,9 +305,10 @@ export class Game {
       }
     }
 
+    this.judgeLanded(false);
     const judgeNow = this.t - (this.tapMode ? 0 : HIT.inputLag);
     for (const p of this.pads) {
-      if (p.state === 'live' && p.shown && judgeNow > p.endT && !(p.pendingUntil > this.t)) this.onMiss(p);
+      if (p.state === 'live' && p.shown && judgeNow > p.endT) this.onMiss(p);
     }
     this.revealPads();
     for (const d of this.ducks) {
@@ -390,38 +406,15 @@ export class Game {
       // Only movement since the pad showed up counts.
       let start = 0;
       while (start < all.length && judgeAt(all[start]) < free) start++;
-      let hit = this.punchInto(p, all.slice(start), F, judgeAt);
-      // A punch already found and waiting to be confirmed keeps being judged,
-      // even once its start has slid out of the recent-movement window.
-      if (!hit && p.pending && this.t - p.pending.at < FORM.settle + 250) hit = p.pending.hit;
-      if (hit) {
-        // Not a punch (a hand waving through): it doesn't count, and now and
-        // then says how to make it one. 'wait': decide on the next frame.
-        const form = this.tapMode ? { verdict: 'punch', flaws: [] } : this.formOf(p, h, hit, F);
-        if (form.verdict === 'wait') {
-          p.pending = { hit, at: p.pending ? p.pending.at : this.t };
-          p.pendingUntil = this.t + FORM.settle; // don't time the pad out mid-decision
-          continue;
-        }
-        p.pending = null;
-        if (form.verdict === 'no') {
-          this.handUsed[key] = Math.max(this.handUsed[key], hit.sampleT);
-          this.detail.noPunch++;
-          if (this.t - this.lastGuardHint > FORM.hintEvery) {
-            this.lastGuardHint = this.t;
-            this.popText('No punch', hit.pos.x, hit.pos.y - hit.pos.r - 14, COLORS.miss, NO_PUNCH_TIPS[form.why] || NO_PUNCH_TIPS.guard);
-          }
-          continue;
-        }
-        if (!best || p.id < best.p.id) best = { p, ...hit, flaws: form.flaws };
-      }
+      const hit = this.punchInto(p, all.slice(start), F, judgeAt);
+      if (hit && (!best || p.id < best.p.id)) best = { p, ...hit };
     }
     if (best) {
       this.handCooldown[key] = this.t;
       this.handUsed[key] = best.sampleT;
       this.handLanded[key] = { t: h.cur.t, vx: h.vx, vy: h.vy };
       this.noteGuardHand(key, F);
-      this.onHit(best.p, key, best.judgeT, best.pos, best.flaws);
+      this.land(best.p, key, best.judgeT, best.pos, h, best.sampleT);
     }
   }
 
@@ -431,25 +424,25 @@ export class Game {
     return nose ? { x: nose.x, y: nose.y + 0.3 * F.S } : { x: F.ax, y: F.ay - 0.42 * F.S };
   }
 
-  // Judges a fist that reached its pad: is it a punch, and was it a clean one?
-  // A punch leaves the guard (fist up by the chin, elbow bent), goes fairly
-  // straight to the pad within FORM.maxReach ms (an uppercut dips first), and
-  // stops or comes back there instead of carrying on through. A hand waving
-  // around does none of that, so it doesn't count. Form then decides clean or
-  // sloppy: straights straighten the arm, hooks keep the elbow up and bent,
-  // uppercuts keep the arm bent, and every punch should be snappy. When the
-  // tracker can't see the arm well enough to tell, it gets the benefit of the
-  // doubt. Returns { verdict: 'punch' | 'no' | 'wait', flaws }.
+  // Judges a hit: a clean punch, or a sloppy one and why. A good punch leaves
+  // the guard (the fist settled up by the chin, elbow bent), goes fairly
+  // straight and quickly out to the pad (an uppercut dips and drives up, and
+  // isn't one more stroke of a hand bobbing up and down), and has good form:
+  // straights straighten the arm, hooks keep the elbow up and bent, uppercuts
+  // keep the arm bent, and every punch is snappy. When the tracker can't see the
+  // arm well enough to tell, it gets the benefit of the doubt. Returns the
+  // flaws, most important first (empty for a clean punch).
   formOf(p, h, hit, F) {
-    const hist = h.hist;
+    const hist = h.hist.map((s) => onBody(s, F));
     const ci = hist.findIndex((s) => s.t === hit.sampleT);
-    if (ci < 0) return { verdict: 'no', flaws: [] };
+    if (ci < 0) return [];
     const contact = hist[ci];
     const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
     const inGuard = (s) => this.inGuard(h.key, s, F);
-    // Speed between this camera frame and the one before (shoulder widths/s).
     const stepSpeed = (i) => (i > 0 ? dist(hist[i], hist[i - 1]) / Math.max(0.016, (hist[i].t - hist[i - 1].t) / 1000) / F.S : Infinity);
-    // Where it left the guard: the last frame in the guard before the punch.
+    const flaws = [];
+    // Where it left the guard (the last frame in the guard before the hit),
+    // and where it had settled there before that.
     let gi = -1;
     for (let i = ci - 1; i >= 0 && hist[i].t >= contact.t - FORM.guardLook; i--) {
       if (inGuard(hist[i])) {
@@ -457,9 +450,6 @@ export class Game {
         break;
       }
     }
-    if (gi < 0) return { verdict: 'no', why: 'guard', flaws: [] };
-    // ...and before that, the fist settled there, if only for a moment (a
-    // flailing hand never does).
     let ri = -1;
     for (let i = gi; i >= 1 && hist[i].t >= contact.t - FORM.guardLook; i--) {
       if (inGuard(hist[i]) && stepSpeed(i) <= FORM.restSpeed) {
@@ -467,78 +457,61 @@ export class Game {
         break;
       }
     }
-    if (ri < 0) return { verdict: 'no', why: 'guard', flaws: [] };
-    const g = hist[gi];
-    const last = hist[hist.length - 1];
-    if (p.kind !== 'upper') {
-      // Quick and fairly direct from the guard to the pad.
-      if (contact.t - hist[gi].t > FORM.maxReach) return { verdict: 'no', why: 'slow', flaws: [] };
-      // How far the fist strayed sideways from the straight line between the
-      // guard and the pad (camera jitter barely moves this; a loop or arc does).
+    if (gi < 0 || ri < 0) flaws.push('guard');
+    else if (p.kind !== 'upper') {
+      const g = hist[gi];
+      // A quick, fairly direct punch out to the pad.
       const cl = dist(g, contact) || 1;
       let stray = 0;
       for (let i = gi + 1; i < ci; i++) {
         stray = Math.max(stray, Math.abs((hist[i].x - g.x) * (contact.y - g.y) - (hist[i].y - g.y) * (contact.x - g.x)) / cl);
       }
-      if (stray > Math.max(FORM.strayMin * F.S, FORM.stray * cl)) return { verdict: 'no', why: 'curve', flaws: [] };
-      // It ends at the pad: the fist's far point along the punch (where it
-      // stops or turns back) is on or near the pad, not somewhere past it (a
-      // hand waving through).
-      const dx = contact.x - g.x;
-      const dy = contact.y - g.y;
-      const dl = Math.hypot(dx, dy) || 1;
-      const along = (s) => ((s.x - g.x) * dx + (s.y - g.y) * dy) / dl;
-      let fi = ci;
-      for (let i = gi + 1; i < hist.length; i++) if (along(hist[i]) > along(hist[fi])) fi = i;
-      const end = dist(hist[fi], hit.pos);
-      const reach = hit.pos.r * HIT.reach + HIT.fist * F.S;
-      if (end > reach + FORM.carry * F.S) return { verdict: 'no', why: 'through', flaws: [] };
-      const turned = along(hist[fi]) - along(last) >= FORM.turnBack * F.S;
-      if (!turned && last.t - hist[fi].t < FORM.settle) return { verdict: 'wait', flaws: [] };
-      // A real punch travels out from where the fist rested in the guard; a
-      // twitch by the face doesn't.
-      if (dist(hist[ri], hist[fi]) < FORM.minTravel * F.S) return { verdict: 'no', why: 'short', flaws: [] };
+      if (stray > Math.max(FORM.strayMin * F.S, FORM.stray * cl)) flaws.push('curve');
+      else if (contact.t - g.t > FORM.maxReach) flaws.push('slow');
+      else if (dist(hist[ri], contact) < FORM.minTravel * F.S) flaws.push('short');
     } else {
-      // An uppercut is one drive up from below the pad to about chin height.
-      // A hand bobbing up and down (dancing, pumping the arms) rises again and
-      // again and never gets that high.
+      // One drive up, not another stroke of a hand bobbing up and down: no
+      // earlier rise by this fist from down around the pad's level.
       let li = ci;
       for (let i = gi; i <= ci; i++) if (hist[i].y > hist[li].y) li = i;
-      let top = contact.y;
-      let ti = ci;
-      for (let i = ci; i < hist.length; i++) if (hist[i].y < top) { top = hist[i].y; ti = i; }
-      const chin = this.chinPoint(F);
-      const highEnough = top <= chin.y + FORM.upperTop * F.S;
-      if (!highEnough) {
-        if (ti === hist.length - 1 || last.t - hist[ti].t < FORM.settle) return { verdict: 'wait', flaws: [] };
-        return { verdict: 'no', why: 'low', flaws: [] };
-      }
-      // An earlier up-stroke by this fist just before it left the guard: a
-      // rhythm (bobbing, pumping the arms), not a punch.
       let lowest = -Infinity;
       for (let i = 0; i <= gi; i++) {
         if (hist[i].t < hist[li].t - FORM.bobLook) continue;
-        if (hist[i].y >= hit.pos.y - FORM.bobFrom * F.S) lowest = Math.max(lowest, hist[i].y); // a hand down at the pad's level...
-        if (lowest - hist[i].y >= FORM.bobRise * F.S) return { verdict: 'no', why: 'bob', flaws: [] }; // ...rising
+        if (hist[i].y >= hit.pos.y - FORM.bobFrom * F.S) lowest = Math.max(lowest, hist[i].y);
+        if (lowest - hist[i].y >= FORM.bobRise * F.S) {
+          flaws.push('bob');
+          break;
+        }
       }
     }
 
     // Arm shape, from typical (median) values, so one noisy tracker frame
     // can't make or break it.
     const around = hist.filter((s) => Math.abs(s.t - contact.t) <= 70);
+    const finish = hist.filter((s) => s.t >= contact.t - 70 && s.t <= contact.t + FORM.judgeAfter);
     const before = hist.filter((s) => s.t >= contact.t - 450 && s.t <= contact.t - 150);
     const median = (arr, k) => {
       const v = arr.map((s) => s[k]).filter((x) => x != null).sort((a, b) => a - b);
       return v.length ? v[Math.floor((v.length - 1) / 2)] : null;
     };
-    const flaws = [];
+    // The most a value reached, ignoring one-frame spikes (best of the medians
+    // of three frames in a row).
+    const reached = (arr, k) => {
+      const v = arr.map((s) => s[k]).filter((x) => x != null);
+      if (v.length < 3) return median(arr, k);
+      let m = -Infinity;
+      for (let i = 1; i < v.length - 1; i++) m = Math.max(m, [v[i - 1], v[i], v[i + 1]].sort((a, b) => a - b)[1]);
+      return m;
+    };
     const e3 = median(around, 'ext3');
     if (p.kind === 'straight') {
-      // The arm has to straighten during the punch. The 3D estimate sees that
-      // even when the arm points at the camera; the flat image can show it too
-      // when the arm reaches out to the side. Either is enough.
+      // The arm has to straighten during the punch (by the time it finishes).
+      // The 3D estimate sees that even when the arm points at the camera; the
+      // flat image can show it too when the arm reaches out to the side. Either
+      // is enough.
+      const e3 = reached(finish, 'ext3');
       const e3b = median(before, 'ext3');
-      const e2 = median(around, 'ext2');
+      const e2 = reached(finish, 'ext2');
       const e2b = median(before, 'ext2');
       const by3 = e3 != null && e3b != null && e3 - e3b >= FORM.extend3 && e3 >= FORM.straightArm;
       const by2 = e2 != null && e2b != null && e2 - e2b >= FORM.extend2 && e2 >= FORM.straightArm2;
@@ -554,7 +527,7 @@ export class Game {
     let peak = 0;
     for (const s of hist) if (s.t >= contact.t - HIT.path && s.t <= until) peak = Math.max(peak, s.sp || 0);
     if (peak / F.S < FORM.snap) flaws.push('snap');
-    return { verdict: 'punch', flaws };
+    return flaws;
   }
 
   // Is the fist in its guard: arm bent, and either near this player's own
@@ -574,11 +547,13 @@ export class Game {
   learnGuard(key, h, F) {
     const n = h.hist.length;
     if (n < 7) return;
-    const b = h.hist[n - 1];
+    const b = onBody(h.hist[n - 1], F);
     // Held still for a moment (a wave only slows for an instant as it turns).
     let slow = b.t - h.hist[n - 7].t >= FORM.holdFor;
     for (let i = n - 6; i < n && slow; i++) {
-      const v = Math.hypot(h.hist[i].x - h.hist[i - 1].x, h.hist[i].y - h.hist[i - 1].y) / Math.max(0.016, (h.hist[i].t - h.hist[i - 1].t) / 1000) / F.S;
+      const a1 = onBody(h.hist[i], F);
+      const a0 = onBody(h.hist[i - 1], F);
+      const v = Math.hypot(a1.x - a0.x, a1.y - a0.y) / Math.max(0.016, (a1.t - a0.t) / 1000) / F.S;
       if (v > FORM.restSpeed * 0.6) slow = false;
     }
     const bent = b.ext3 != null ? b.ext3 <= FORM.guardBend : b.ext2 == null || b.ext2 <= FORM.guardBend;
@@ -602,15 +577,20 @@ export class Game {
     const other = this.body && this.body.hands[key === 'L' ? 'R' : 'L'];
     if (!other || !other.visible || !other.cur) return;
     const chin = this.chinPoint(F);
+    const o = onBody(other.cur, F);
     this.detail.punches++;
-    if (Math.hypot(other.cur.x - chin.x, other.cur.y - chin.y) > FORM.guardZone * 1.2 * F.S) this.detail.handsDown++;
+    if (Math.hypot(o.x - chin.x, o.y - chin.y) > FORM.guardZone * 1.2 * F.S) this.detail.handsDown++;
   }
 
-  // Did this stretch of fist movement punch into pad p? Returns where and when
-  // (timed at the fist's closest point), or null. Waits one camera frame while
-  // the fist is still closing in, unless it is already deep in the pad.
-  punchInto(p, raw, F, judgeAt) {
-    if (raw.length < 2) return null;
+  // Did the fist go over pad p in this stretch of movement? Any fist of the right
+  // hand moving into the pad counts; formOf then judges whether it was a good
+  // punch. Returns where and when (timed at the fist's closest point), or null.
+  // Waits one camera frame while the fist is still closing in, unless it is
+  // already deep in the pad. Pulling a fist back toward the body, a fist resting
+  // at a pad's edge, and one-frame tracking glitches don't count.
+  punchInto(p, rawPath, F, judgeAt) {
+    if (rawPath.length < 2) return null;
+    const raw = rawPath.map((s) => onBody(s, F));
     // A fist that jumps a long way in one camera frame may be a tracking glitch:
     // decide once the next frame shows whether it stays there.
     const last = raw[raw.length - 1];
@@ -641,13 +621,12 @@ export class Game {
     if (at < 0 || dMin > reach) return null;
     if (at === path.length - 1 && Math.hypot(newest.x - pos.x, newest.y - pos.y) > pos.r * HIT.deep) return null;
     if (p.kind === 'upper') {
+      // Moving up into it.
       let low = -Infinity;
       for (let i = 0; i < at; i++) low = Math.max(low, path[i].y);
       let high = Infinity;
       for (let i = at - 1; i < path.length; i++) high = Math.min(high, path[i].y);
       if ((low - high) / F.S < HIT.upperRise) return null;
-      // Driving up through the pad means coming from below it.
-      if (low < pos.y - HIT.upperFrom * F.S) return null;
     } else {
       // How far out the fist was before it closed in (it may have pulled back
       // from a previous pad first), and how far it actually travelled.
@@ -662,8 +641,10 @@ export class Game {
           farIdx = i;
         }
       }
-      const moved = Math.hypot(path[at].x - far.x, path[at].y - far.y) / F.S;
-      if ((dFar - dMin) / F.S < HIT.approach || moved < HIT.travel) return null;
+      // Coming in from outside it, toward its middle (a fist resting at the
+      // edge of a pad, or bouncing there, doesn't count).
+      const edge = pos.r * HIT.edge + HIT.fist * F.S;
+      if (dFar < edge + HIT.entry * F.S || (dFar - dMin) / F.S < HIT.approach) return null;
       // A real punch closes in over several camera frames; a tracking glitch
       // covers nearly all of the distance in one.
       let step = 0;
@@ -695,14 +676,48 @@ export class Game {
     return true;
   }
 
-  onHit(p, key, judgeT, pos, flaws = []) {
+  // A fist got to the pad: it pops right away with a thud. Whether it was a
+  // good punch or a sloppy one is decided FORM.judgeAfter ms later, once the
+  // punch has finished (the arm's full extension comes just after the fist
+  // reaches the pad).
+  land(p, key, judgeT, pos, h, sampleT) {
+    for (const q of this.pads) {
+      if (q !== p && q.state === 'live' && q.hand === p.hand) q.freeAt = Math.max(q.freeAt ?? -Infinity, judgeT);
+    }
+    Object.assign(p, { state: 'hit', doneT: this.fxT, x: pos.x, y: pos.y, r: pos.r });
+    this.burst(pos.x, pos.y, COLORS[p.hand], 10, pos.r);
+    this.shake = Math.max(this.shake, 3);
+    this.sfx.land();
+    this.judging.push({ p, key, judgeT, pos, h, sampleT, t0: this.t });
+  }
+
+  // Judges landed punches whose moment has come (all of them when forced, at
+  // the final bell).
+  judgeLanded(force) {
+    if (!this.judging.length) return;
+    const F = this.frameOf();
+    const later = [];
+    for (const j of this.judging) {
+      if (!force && this.t - j.t0 < FORM.judgeAfter) {
+        later.push(j);
+        continue;
+      }
+      const flaws = this.formOf(j.p, j.h, { sampleT: j.sampleT, pos: j.pos }, F);
+      this.onHit(j.p, j.key, j.judgeT, j.pos, flaws, true);
+    }
+    this.judging = later;
+  }
+
+  onHit(p, key, judgeT, pos, flaws = [], landed = false) {
     // Faster is better: judged by how soon after the pad showed up it was hit.
     const reaction = Math.max(0, judgeT - p.showT);
     const j = reaction <= Math.min(HIT.perfect, p.life * 0.45) ? 'PERFECT' : reaction <= Math.min(HIT.great, p.life * 0.75) ? 'GREAT' : 'GOOD';
     const clean = !flaws.length;
     // Later pads only count movement from here on, so this punch can't take one too.
-    for (const q of this.pads) {
-      if (q !== p && q.state === 'live' && q.hand === p.hand) q.freeAt = Math.max(q.freeAt ?? -Infinity, judgeT);
+    if (!landed) {
+      for (const q of this.pads) {
+        if (q !== p && q.state === 'live' && q.hand === p.hand) q.freeAt = Math.max(q.freeAt ?? -Infinity, judgeT);
+      }
     }
     // A sloppy punch still takes the pad, for half the points. It doesn't grow
     // the combo or win back health, and it doesn't break the combo either.
@@ -726,18 +741,20 @@ export class Game {
     else if (j === 'GREAT') this.stats.great++;
     else this.stats.good++;
 
-    Object.assign(p, { state: 'hit', doneT: this.fxT, judge: clean ? j : 'SLOPPY', x: pos.x, y: pos.y, r: pos.r });
+    if (!landed) Object.assign(p, { state: 'hit', doneT: this.fxT, x: pos.x, y: pos.y, r: pos.r });
+    p.judge = clean ? j : 'SLOPPY';
     const color = COLORS[p.hand];
     if (clean) {
-      this.burst(pos.x, pos.y, color, j === 'PERFECT' ? 22 : 14, pos.r);
+      this.burst(pos.x, pos.y, color, j === 'PERFECT' ? 18 : 10, pos.r);
       this.rings.push({ x: pos.x, y: pos.y, r: pos.r, t0: this.fxT, color: j === 'PERFECT' ? COLORS.gold : color });
       this.popText(j, pos.x, pos.y - pos.r - 14, judgeColor(j), `+${pts}`);
       this.shake = Math.max(this.shake, j === 'PERFECT' ? 7 : 4);
-      this.sfx.hit(j);
+      if (landed) this.sfx.judged(j);
+      else this.sfx.hit(j);
     } else {
-      this.burst(pos.x, pos.y, COLORS.miss, 8, pos.r);
       this.popText('Sloppy', pos.x, pos.y - pos.r - 14, COLORS.miss, `+${pts} · ${FLAW_TIPS[flaws[0]]}`);
-      this.sfx.hit('GOOD');
+      if (landed) this.sfx.judged('SLOPPY');
+      else this.sfx.hit('GOOD');
     }
     this.checkLevel();
   }
@@ -808,6 +825,7 @@ export class Game {
 
   end(reason) {
     if (this.ended) return;
+    this.judgeLanded(true);
     this.ended = true;
     this.running = false;
     this.endReason = reason;
@@ -837,7 +855,6 @@ export class Game {
       reaction: d.reactionN ? d.reactionSum / d.reactionN : 0,
       caught: d.caught,
       flaws: d.flaws,
-      noPunch: d.noPunch,
       punches: d.punches,
       handsDown: d.handsDown,
       leadHand: this.leadHand,

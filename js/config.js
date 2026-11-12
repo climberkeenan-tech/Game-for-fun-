@@ -69,14 +69,14 @@ export const HIT = {
   perfect: 650,    // hit within this many ms of the pad showing up for PERFECT (at most 45% of its window)
   great: 1000,     // ...within this for GREAT (at most 75% of its window), otherwise GOOD
   path: 320,       // ms of recent fist movement checked against each pad
-  minSpeed: 1.45,  // peak fist speed (shoulder widths per second) needed in that time
-  approach: 0.16,  // the fist must end at least this much closer to the pad (shoulder widths)
-  travel: 0.27,    // ...after moving at least this far, so a twitch or a resting fist never counts
-  outward: 0.1,    // ...and moving out from the body, so pulling a fist back is never a punch
-  upperRise: 0.3,  // uppercut pads need the fist to travel up at least this far...
-  upperFrom: 0.1,  // ...starting no higher than this above the pad's center (shoulder widths)
-  reach: 1.3,      // hit radius as a multiple of the drawn pad radius
-  fist: 0.1,       // plus the size of the fist itself (shoulder widths)
+  minSpeed: 1.5,   // peak fist speed (shoulder widths per second) needed in that time
+  approach: 0.18,  // the fist moves in toward the pad by at least this much (shoulder widths),
+  outward: 0.05,   // ...and out from the body, so pulling a fist back never counts
+  upperRise: 0.25, // uppercut pads: the fist moves up into it by at least this much
+  reach: 1.05,     // a hit: the fist gets within the pad's drawn radius times this,
+  fist: 0.13,      // plus the size of the fist itself (shoulder widths),
+  edge: 1.05,      // ...having come in from outside its edge (drawn radius times this, plus the fist)
+  entry: 0.03,     // ...by at least this much, so a fist resting by a pad never counts
   deep: 0.5,       // inside this share of the pad radius a hit counts at once
   jump: 0.45,      // a one-frame fist jump bigger than this (shoulder widths) waits a frame to be confirmed
   spike: 0.25,     // a frame this far from both neighbours, which agree with each other, is a glitch
@@ -121,6 +121,7 @@ export const FORM = {
   bentMax: 0.92,     // hook/uppercut: arm no straighter than this (no straight-arm swings)
   snap: 2.2,         // peak fist speed (shoulder widths per second) for a crisp punch
   sloppyShare: 0.5,
+  judgeAfter: 150,   // ms after a fist lands before the punch is judged (it pops at once)
 };
 
 export const POINTS = { PERFECT: 300, GREAT: 200, GOOD: 100, SLIP: 250 };

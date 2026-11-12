@@ -222,6 +222,13 @@ export class Body {
       const sh = pts[ids.shoulder];
       const el = pts[ids.elbow];
       const extra = {};
+      // Where the body was at this frame (shoulder midpoint), so hits can be
+      // judged from arm movement alone: bouncing or swaying moves the fists and
+      // the pads together.
+      if (shouldersOk) {
+        extra.cx = (ls.x + rs.x) / 2;
+        extra.cy = (ls.y + rs.y) / 2;
+      }
       if (sh.v > 0.5 && el.v > 0.4) {
         extra.ext2 = straightness(sh, el, w);
         if (this.S) extra.elbowUp = (sh.y - el.y) / this.S;

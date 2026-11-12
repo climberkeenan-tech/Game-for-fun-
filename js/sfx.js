@@ -75,6 +75,29 @@ export class Sfx {
     }
   }
 
+  // The thud as a fist lands on a pad, before it's judged.
+  land() {
+    if (!this.ok) return;
+    const t = this.ctx.currentTime;
+    this._tone('sine', 150, 48, t, 0.9, 0.16);
+    this._noise(t, 0.75, 0.07, 'bandpass', 1500, 0.7);
+  }
+
+  // The verdict a moment later: a ding for PERFECT, a tick for GREAT, a dull
+  // note for SLOPPY.
+  judged(judgement) {
+    if (!this.ok) return;
+    const t = this.ctx.currentTime;
+    if (judgement === 'PERFECT') {
+      this._noise(t, 0.4, 0.05, 'highpass', 3200, 0.5);
+      this._tone('triangle', 1760, 1760, t + 0.01, 0.14, 0.14);
+    } else if (judgement === 'GREAT') {
+      this._tone('triangle', 1320, 1320, t, 0.08, 0.1);
+    } else if (judgement === 'SLOPPY') {
+      this._tone('square', 140, 120, t, 0.06, 0.16);
+    }
+  }
+
   miss() {
     if (!this.ok) return;
     const t = this.ctx.currentTime;

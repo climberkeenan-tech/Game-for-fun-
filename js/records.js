@@ -199,7 +199,9 @@ export function cornerNotes(r, { tapMode, dodges }) {
   // Technique: swings that weren't punches, and sloppy ones.
   if (!tapMode) {
     const f = r.flaws || {};
-    if ((r.noPunch || 0) >= 3) work.push({ w: r.noPunch * 0.9, text: `${r.noPunch} swings didn't count as punches. Start each one with your fists up by your chin, punch straight out to the pad, and bring it back.` });
+    const swings = (f.guard || 0) + (f.bob || 0) + (f.curve || 0) + (f.slow || 0);
+    if (swings >= 3) work.push({ w: swings * 1.1, text: `${swings} hits were swings or waves rather than punches. Start each one with your fists up by your chin, punch straight out to the pad, and bring it back.` });
+    if ((f.short || 0) >= 2) work.push({ w: f.short, text: `${f.short} punches stopped short. Punch all the way out to the pad, not just a flick from your guard.` });
     if ((f.extend || 0) >= 2) work.push({ w: f.extend * 1.2, text: `${f.extend} jabs and crosses were sloppy: the arm didn't straighten. Drive the fist all the way out to the pad, then snap it back.` });
     if ((f.elbow || 0) >= 2) work.push({ w: f.elbow * 1.2, text: `${f.elbow} hooks came in with the elbow low. Lift the elbow to shoulder height and swing through.` });
     if ((f.bent || 0) >= 2) work.push({ w: f.bent * 1.2, text: `${f.bent} hooks or uppercuts were straight-arm swings. Keep the elbow bent and drive from your legs.` });

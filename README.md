@@ -26,12 +26,10 @@ Southpaw mode swaps lead and rear.
 
 **One hand, one pad.** Each hand has one pad on screen at a time: the next blue pad appears once the current one is hit or missed, and the same for red, so pads never stack up. Only the matching fist counts: blue pads take your left, red pads your right. One punch takes one pad: combos go in order, pulling your fist back never counts, and a fist that just landed has to stop or pull back before it can land again. Single-frame tracking glitches, including the tracker briefly swapping your left and right wrists, are ignored.
 
-**Good hits and bad hits.** Only real punches count. A punch starts from your guard (fist up by your chin, elbow bent), goes fairly straight to the pad, and stops or comes back there; an uppercut comes from below the pad and drives up through it. Waving or swinging your hand through a pad doesn't count, and "NO PUNCH" reminds you now and then. A real punch with sloppy form shows SLOPPY and scores half, without growing your combo:
-- jab or cross: the arm has to straighten into the pad (judged from the tracker's 3D estimate of your arm)
-- hook: elbow up near shoulder height, arm bent
-- uppercut: arm bent, not a straight-arm swing
-- any punch: snap it, not a slow push
-Clean punches get PERFECT, GREAT or GOOD by timing, as before.
+**Good hits and bad hits.** Any time your matching fist goes into a pad, it counts: the pad pops right away with a thud. A moment later (once the punch has finished) you see whether it was a good punch or a sloppy one:
+- a good punch leaves your guard (fist up by your chin, elbow bent), goes fairly straight and quickly out to the pad, and has good form: a jab or cross straightens the arm, a hook keeps the elbow up and bent, an uppercut dips and drives up with the arm bent, and every punch is snappy. It scores PERFECT, GREAT or GOOD by how fast you hit the pad, and grows your combo.
+- anything else is SLOPPY, with a one-line fix ("start from your guard", "extend the arm", "punch straight to it", "elbow up"...). It scores half and doesn't grow your combo. Waving your hand through pads counts, but always as SLOPPY.
+Moving your whole body (bouncing, swaying, stepping) doesn't set pads off: only your arm's own movement counts.
 
 **Combo.** Every 5 hits in a row adds x0.25 to your multiplier, up to x4. A miss resets it.
 
