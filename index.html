@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#101216">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="description" content="Prop up your phone and punch the pads. A camera boxing game that runs in the browser.">
+<title>Mitt Rush</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='28' fill='%23ff4f6a'/%3E%3Ccircle cx='32' cy='32' r='21' fill='%235c1424'/%3E%3Ccircle cx='32' cy='32' r='12' fill='none' stroke='%23f1ece1' stroke-width='4'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Big+Shoulders+Display:wght@700;900&display=swap">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="stage">
+  <video id="cam" playsinline muted autoplay></video>
+  <div class="vignette"></div>
+  <canvas id="fx"></canvas>
+
+  <div id="hud" hidden>
+    <div class="hud-top">
+      <div class="tape score-tape">
+        <span class="lbl">Score</span>
+        <span id="hudScore" class="num">0</span>
+      </div>
+      <div class="clock">
+        <span id="hudClockLbl" class="lbl">Round</span>
+        <span id="hudClock" class="num">1:00</span>
+      </div>
+      <button id="pauseBtn" class="icon-btn" type="button" aria-label="Pause">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="5" y="4" width="5" height="16" rx="1" fill="currentColor"/><rect x="14" y="4" width="5" height="16" rx="1" fill="currentColor"/></svg>
+      </button>
+    </div>
+    <div class="combo" id="hudComboWrap">
+      <span id="hudCombo" class="num">0</span>
+      <span class="lbl">Combo</span>
+      <span id="hudMult" class="mult">x1</span>
+    </div>
+    <div class="hud-bottom">
+      <div class="health">
+        <div class="health-head"><span class="lbl">Health</span><span id="hudHp" class="hp-num">100</span></div>
+        <div class="health-bar"><i id="hudHpFill"></i></div>
+      </div>
+      <div class="speed"><span class="lbl">Speed</span><span id="hudLvl" class="num">1</span></div>
+    </div>
+  </div>
+
+  <div id="call" class="call" hidden></div>
+  <div id="banner" class="banner" hidden><span class="b-title"></span><span class="b-sub"></span></div>
+  <div id="countdown" class="countdown" hidden></div>
+  <div id="lost" class="lost" hidden>
+    <p class="lost-title">Step back into view</p>
+    <p class="lost-sub">The round is on hold until your shoulders are in the shot.</p>
+  </div>
+
+  <section id="menu" class="screen menu">
+    <div class="ropes" aria-hidden="true"><i></i><i></i><i></i></div>
+    <div class="menu-inner">
+      <header class="brand">
+        <p class="eyebrow">Pad work for your phone camera</p>
+        <h1 class="logo"><span class="w1">Mitt</span><span class="w2">Rush</span></h1>
+        <p class="tagline">Your phone holds the mitts. You throw the punches.</p>
+      </header>
+
+      <ol class="howto">
+        <li><span class="step"><b>Prop your phone up</b> at about chest height with the screen facing you.</span></li>
+        <li><span class="step"><b>Step back about 6 feet</b> so your head, shoulders and both fists are in the shot.</span></li>
+        <li><span class="step"><b>Punch each pad as its ring closes.</b> <span class="hl hl-l">Blue</span> takes your left hand, <span class="hl hl-r">red</span> your right. Duck under the striped bar.</span></li>
+      </ol>
+
+      <div class="options">
+        <div class="opt" role="group" aria-label="Round length">
+          <span class="opt-label">Round</span>
+          <div class="chips">
+            <button class="chip" type="button" data-opt="mode" data-val="60">1 min</button>
+            <button class="chip" type="button" data-opt="mode" data-val="180">3 min</button>
+            <button class="chip" type="button" data-opt="mode" data-val="0">Survival</button>
+          </div>
+        </div>
+        <div class="opt" role="group" aria-label="Stance">
+          <span class="opt-label">Stance</span>
+          <div class="chips">
+            <button class="chip" type="button" data-opt="stance" data-val="orthodox">Orthodox</button>
+            <button class="chip" type="button" data-opt="stance" data-val="southpaw">Southpaw</button>
+          </div>
+        </div>
+        <div class="opt" role="group" aria-label="Coach voice">
+          <span class="opt-label">Coach</span>
+          <div class="chips">
+            <button class="chip" type="button" data-opt="coach" data-val="on">Calls combos</button>
+            <button class="chip" type="button" data-opt="coach" data-val="off">Quiet</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="cta">
+        <button id="startBtn" class="btn-primary" type="button">Glove up</button>
+        <p id="loadStatus" class="status" role="status">Loading body tracking…</p>
+        <button id="tapBtn" class="btn-link" type="button">No camera? Play with taps</button>
+      </div>
+      <p class="best">Personal best <b id="bestScore">0</b></p>
+    </div>
+  </section>
+
+  <section id="setup" class="screen setup" hidden>
+    <div class="setup-card">
+      <h2 id="setupTitle">Step into the shot</h2>
+      <p id="setupHint" class="setup-hint">Back up until your head, shoulders and both fists show.</p>
+      <ul class="checks">
+        <li id="ckHead">Head</li>
+        <li id="ckShoulders">Shoulders</li>
+        <li id="ckLeft" class="ck-l">Left fist</li>
+        <li id="ckRight" class="ck-r">Right fist</li>
+      </ul>
+      <div class="hold"><i id="holdFill"></i></div>
+      <button id="setupBack" class="btn-link" type="button">Back to menu</button>
+    </div>
+  </section>
+
+  <section id="pause" class="screen pause" hidden>
+    <div class="panel">
+      <h2>Paused</h2>
+      <div class="panel-actions">
+        <button id="resumeBtn" class="btn-primary" type="button">Resume</button>
+        <button id="restartBtn" class="btn-secondary" type="button">Restart round</button>
+      </div>
+      <div class="options compact">
+        <div class="opt" role="group" aria-label="Sound">
+          <span class="opt-label">Sound</span>
+          <div class="chips">
+            <button class="chip" type="button" data-opt="sound" data-val="on">On</button>
+            <button class="chip" type="button" data-opt="sound" data-val="off">Off</button>
+          </div>
+        </div>
+        <div class="opt" role="group" aria-label="Coach voice">
+          <span class="opt-label">Coach</span>
+          <div class="chips">
+            <button class="chip" type="button" data-opt="coach" data-val="on">On</button>
+            <button class="chip" type="button" data-opt="coach" data-val="off">Off</button>
+          </div>
+        </div>
+        <div class="opt" role="group" aria-label="Skeleton overlay">
+          <span class="opt-label">Skeleton</span>
+          <div class="chips">
+            <button class="chip" type="button" data-opt="skeleton" data-val="on">Show</button>
+            <button class="chip" type="button" data-opt="skeleton" data-val="off">Hide</button>
+          </div>
+        </div>
+      </div>
+      <button id="quitBtn" class="btn-link" type="button">Quit to menu</button>
+    </div>
+  </section>
+
+  <section id="results" class="screen results" hidden>
+    <div class="results-inner">
+      <article class="scorecard" aria-labelledby="scResult">
+        <header class="sc-head"><span>Official scorecard</span><span id="scDate"></span></header>
+        <h2 id="scResult" class="sc-result">Final bell</h2>
+        <p id="scSub" class="sc-sub">You went the distance.</p>
+        <div class="sc-score-row">
+          <div>
+            <p class="sc-label">Final score</p>
+            <p id="scScore" class="sc-score">0</p>
+          </div>
+          <div id="scVerdict" class="stamp">Contender</div>
+        </div>
+        <p id="scBest" class="sc-best" hidden>New personal best</p>
+        <dl class="sc-stats">
+          <div><dt>Punches landed</dt><dd id="stLanded">0 / 0</dd></div>
+          <div><dt>Accuracy</dt><dd id="stAcc">0%</dd></div>
+          <div><dt>Perfect</dt><dd id="stPerfect">0</dd></div>
+          <div><dt>Best combo</dt><dd id="stCombo">0</dd></div>
+          <div><dt>Ducks slipped</dt><dd id="stSlips">0 / 0</dd></div>
+          <div><dt>Missed</dt><dd id="stMissed">0</dd></div>
+          <div><dt>Time</dt><dd id="stTime">0:00</dd></div>
+          <div><dt>Top speed</dt><dd id="stSpeed">1</dd></div>
+        </dl>
+      </article>
+      <div class="res-actions">
+        <button id="againBtn" class="btn-primary" type="button">Run it back</button>
+        <div class="row">
+          <button id="shareBtn" class="btn-secondary" type="button">Share score</button>
+          <button id="menuBtn" class="btn-secondary" type="button">Menu</button>
+        </div>
+        <p id="shareMsg" class="status" role="status" hidden></p>
+      </div>
+    </div>
+  </section>
+
+  <div id="debug" class="debug" hidden></div>
+  <div id="safeProbe" aria-hidden="true"></div>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
