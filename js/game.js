@@ -91,12 +91,13 @@ export class Game {
     this.rings = [];
     this.nextSetT = 1400;
     this.lastWasDuck = false;
-    this.stats = { hits: 0, perfect: 0, great: 0, good: 0, wrong: 0, missed: 0, slips: 0, ducks: 0 };
+    this.stats = { hits: 0, perfect: 0, great: 0, good: 0, missed: 0, slips: 0, ducks: 0 };
     this.shake = 0;
     this.flash = 0;
     this.handSeen = { L: body ? body.hands.L.seq : 0, R: body ? body.hands.R.seq : 0 };
     this.handCooldown = { L: -1e9, R: -1e9 };
     this.handUsed = { L: -Infinity, R: -Infinity };
+    this.handLanded = { L: null, R: null }; // the last hit's direction, until the fist stops or pulls back
     this.baseline = !tapMode && body && body.nose ? body.nose.y : null;
     this.lastDuckEnd = -1e9;
     this.padSeq = 0;
@@ -128,18 +129,18 @@ export class Game {
     return LEVELS[this.levelIdx];
   }
 
-  // A pad takes hits from the moment it has finished popping in.
-  isOpen(p, t) {
-    return t >= p.hitT - p.approach * (1 - HIT.open);
-  }
-
-  // Combos go in order: a pad waits while an earlier pad for the same hand is
-  // still up, so a hook swinging out can't clip the jab pad that comes next.
-  queued(p) {
+  // Earliest (judged) time a punch can count for this pad. A pad lights up
+  // HIT.early ms before its ideal moment. Combos go in order: while an earlier
+  // pad is still up, this one waits until that pad's ideal moment (a little
+  // longer if it's for the same hand). It also only counts movement after the
+  // last pad before it was hit (p.freeAt).
+  freeFrom(p) {
+    let t = Math.max(this.openAt(p), p.freeAt ?? -Infinity);
     for (const q of this.pads) {
-      if (q !== p && q.state === 'live' && q.hand === p.hand && q.hitT < p.hitT) return true;
+      if (q === p || q.state !== 'live' || q.hitT >= p.hitT) continue;
+      t = Math.max(t, q.hand === p.hand ? q.hitT + HIT.hold : q.hitT);
     }
-    return false;
+    return t;
   }
 
   // Pop-up text size: phone-sized on phones, bigger on laptop and desktop screens.
@@ -283,72 +284,127 @@ export class Game {
 
   // ---------------------------------------------------------------- hits
 
-  // Checks the fist's recent movement against every open pad. A pad is hit when
-  // the fist moved into it (uppercut pads: up through it) with some speed. The
-  // hit is timed at the fist's closest point, so it waits one camera frame for
-  // the fist to stop closing in unless the fist is already deep in the pad.
+  // Checks the fist's recent movement against this hand's pads. A pad is hit
+  // when the fist moved into it (uppercut pads: up through it) with real speed.
+  // The hit is timed at the fist's closest point, so it waits one camera frame
+  // for the fist to stop closing in unless the fist is already deep in the pad.
   tryHand(key, h) {
     if (this.t - this.handCooldown[key] < HIT.cooldown) return;
     const F = this.frameOf();
-    const path = h.recent(HIT.path, this.handUsed[key]);
-    if (path.length < 2) return;
-    let peak = 0;
-    for (const s of path) peak = Math.max(peak, s.sp || 0);
-    if (peak / F.S < HIT.minSpeed) return;
-    const newest = path[path.length - 1];
+    // A fist that just landed is still following through. It counts again once
+    // it slows down or pulls back, and only its movement from then on.
+    const landed = this.handLanded[key];
+    if (landed) {
+      // New movement starts at the first camera frame since the hit where the fist
+      // slowed or pulled back, or where the follow-through allowance ran out (the
+      // fist may have been out of sight in between, mid-way into a new punch).
+      let from = null;
+      for (const s of h.hist) {
+        if (s.t <= landed.t) continue;
+        if (s.t - landed.t >= HIT.rearmMax) {
+          from = landed.t + HIT.rearmMax;
+          break;
+        }
+        const slow = (s.sp || 0) < HIT.rearmSpeed * F.S;
+        const back = (s.vx || 0) * landed.vx + (s.vy || 0) * landed.vy < 0;
+        if (slow || back) {
+          from = s.t;
+          break;
+        }
+      }
+      if (from === null) return;
+      this.handLanded[key] = null;
+      this.handUsed[key] = Math.max(this.handUsed[key], from);
+    }
+    const all = h.recent(HIT.path, this.handUsed[key]);
+    if (all.length < 2) return;
+    const newest = all[all.length - 1];
+    const judgeAt = (s) => this.t - HIT.inputLag - (newest.t - s.t);
+    const now = judgeAt(newest);
     let best = null;
     for (const p of this.pads) {
-      if (p.state !== 'live' || this.queued(p)) continue;
-      const pos = this.padPos(p, F);
-      const reach = pos.r * HIT.reach + HIT.fist * F.S;
-      // Closest the fist came to the pad while the pad was open.
-      let dMin = Infinity;
-      let at = -1;
-      let judgeT = 0;
-      for (let i = 1; i < path.length; i++) {
-        const t = this.t - HIT.inputLag - (newest.t - path[i].t);
-        if (!this.isOpen(p, t) || t > p.hitT + HIT.late) continue;
-        const a = path[i - 1];
-        const b = path[i];
-        const d = segDist(pos.x, pos.y, a.x, a.y, b.x, b.y);
-        if (d < dMin) {
-          dMin = d;
-          at = i;
-          judgeT = t;
-        }
-      }
-      if (at < 0 || dMin > reach) continue;
-      const still = at === path.length - 1 && Math.hypot(newest.x - pos.x, newest.y - pos.y) > pos.r * HIT.deep;
-      if (still) continue; // still closing in: decide on the next frame
-      if (p.kind === 'upper') {
-        let low = -Infinity;
-        for (let i = 0; i < at; i++) low = Math.max(low, path[i].y);
-        let high = Infinity;
-        for (let i = at - 1; i < path.length; i++) high = Math.min(high, path[i].y);
-        if ((low - high) / F.S < HIT.upperRise) continue;
-      } else {
-        // How far out the fist was before it closed in (it may have pulled back
-        // from a previous pad first).
-        let dFar = -1;
-        let far = path[0];
-        for (let i = 0; i < at; i++) {
-          const d = Math.hypot(path[i].x - pos.x, path[i].y - pos.y);
-          if (d > dFar) {
-            dFar = d;
-            far = path[i];
+      if (p.state !== 'live' || p.hand !== key) continue;
+      const free = this.freeFrom(p);
+      if (now < free) {
+        // Thrown before the pad lit up: say so once instead of silently ignoring
+        // it. Only when it is simply early, not waiting its turn in a combo.
+        if (!p.toldEarly && free === this.openAt(p) && now >= p.hitT - p.approach * 0.75) {
+          const early = this.punchInto(p, all, F, judgeAt);
+          if (early) {
+            p.toldEarly = true;
+            this.popText('Early', early.pos.x, early.pos.y - early.pos.r - 14, COLORS.miss);
           }
         }
-        const moved = Math.hypot(path[at].x - far.x, path[at].y - far.y) / F.S;
-        if ((dFar - dMin) / F.S < HIT.approach || moved < HIT.travel) continue;
+        continue;
       }
-      const rank = (p.hand === key ? 0 : 1e7) + p.hitT; // right hand first, then earliest pad
-      if (!best || rank < best.rank) best = { p, rank, pos, judgeT, sampleT: path[at].t };
+      // Only movement since the pad became hittable counts.
+      let start = 0;
+      while (start < all.length && judgeAt(all[start]) < free) start++;
+      const hit = this.punchInto(p, all.slice(start), F, judgeAt);
+      if (hit && (!best || p.hitT < best.p.hitT)) best = { p, ...hit };
     }
     if (best) {
       this.handCooldown[key] = this.t;
       this.handUsed[key] = best.sampleT;
+      this.handLanded[key] = { t: h.cur.t, vx: h.vx, vy: h.vy };
       this.onHit(best.p, key, best.judgeT, best.pos);
     }
+  }
+
+  // When the pad lights up and starts taking hits, before any combo-order wait.
+  openAt(p) {
+    return p.hitT - Math.min(HIT.early, p.approach * 0.75);
+  }
+
+  // Did this stretch of fist movement punch into pad p? Returns where and when
+  // (timed at the fist's closest point), or null. Waits one camera frame while
+  // the fist is still closing in, unless it is already deep in the pad.
+  punchInto(p, path, F, judgeAt) {
+    if (path.length < 2) return null;
+    let peak = 0;
+    for (const s of path) peak = Math.max(peak, s.sp || 0);
+    if (peak / F.S < HIT.minSpeed) return null;
+
+    const pos = this.padPos(p, F);
+    const reach = pos.r * HIT.reach + HIT.fist * F.S;
+    const newest = path[path.length - 1];
+    let dMin = Infinity;
+    let at = -1;
+    let judgeT = 0;
+    for (let i = 1; i < path.length; i++) {
+      const t = judgeAt(path[i]);
+      if (t > p.hitT + HIT.late) continue;
+      const d = segDist(pos.x, pos.y, path[i - 1].x, path[i - 1].y, path[i].x, path[i].y);
+      if (d < dMin) {
+        dMin = d;
+        at = i;
+        judgeT = t;
+      }
+    }
+    if (at < 0 || dMin > reach) return null;
+    if (at === path.length - 1 && Math.hypot(newest.x - pos.x, newest.y - pos.y) > pos.r * HIT.deep) return null;
+    if (p.kind === 'upper') {
+      let low = -Infinity;
+      for (let i = 0; i < at; i++) low = Math.max(low, path[i].y);
+      let high = Infinity;
+      for (let i = at - 1; i < path.length; i++) high = Math.min(high, path[i].y);
+      if ((low - high) / F.S < HIT.upperRise) return null;
+    } else {
+      // How far out the fist was before it closed in (it may have pulled back
+      // from a previous pad first), and how far it actually travelled.
+      let dFar = -1;
+      let far = path[0];
+      for (let i = 0; i < at; i++) {
+        const d = Math.hypot(path[i].x - pos.x, path[i].y - pos.y);
+        if (d > dFar) {
+          dFar = d;
+          far = path[i];
+        }
+      }
+      const moved = Math.hypot(path[at].x - far.x, path[at].y - far.y) / F.S;
+      if ((dFar - dMin) / F.S < HIT.approach || moved < HIT.travel) return null;
+    }
+    return { pos, judgeT, sampleT: path[at].t };
   }
 
   tapAt(x, y) {
@@ -356,7 +412,7 @@ export class Game {
     const F = this.frameOf();
     let best = null;
     for (const p of this.pads) {
-      if (p.state !== 'live' || !this.isOpen(p, this.t) || this.queued(p)) continue;
+      if (p.state !== 'live' || this.t < this.freeFrom(p)) continue;
       const pos = this.padPos(p, F);
       if (Math.hypot(x - pos.x, y - pos.y) > pos.r * 1.35) continue;
       if (!best || p.hitT < best.p.hitT) best = { p, pos };
@@ -368,8 +424,11 @@ export class Game {
 
   onHit(p, key, judgeT, pos) {
     const err = Math.abs(judgeT - p.hitT);
-    let j = err <= HIT.perfect ? 'PERFECT' : err <= HIT.great ? 'GREAT' : 'GOOD';
-    if (p.hand !== key) j = 'WRONG';
+    const j = err <= HIT.perfect ? 'PERFECT' : err <= HIT.great ? 'GREAT' : 'GOOD';
+    // Later pads only count movement from here on, so this punch can't take one too.
+    for (const q of this.pads) {
+      if (q !== p && q.state === 'live' && q.hitT > p.hitT) q.freeAt = Math.max(q.freeAt ?? -Infinity, judgeT);
+    }
     const pts = Math.round(POINTS[j] * multiplierFor(this.combo));
     this.score += pts;
     this.combo++;
@@ -378,14 +437,13 @@ export class Game {
     this.stats.hits++;
     if (j === 'PERFECT') this.stats.perfect++;
     else if (j === 'GREAT') this.stats.great++;
-    else if (j === 'GOOD') this.stats.good++;
-    else this.stats.wrong++;
+    else this.stats.good++;
 
     Object.assign(p, { state: 'hit', doneT: this.fxT, judge: j, x: pos.x, y: pos.y, r: pos.r });
     const color = COLORS[p.hand];
     this.burst(pos.x, pos.y, color, j === 'PERFECT' ? 22 : 14, pos.r);
     this.rings.push({ x: pos.x, y: pos.y, r: pos.r, t0: this.fxT, color: j === 'PERFECT' ? COLORS.gold : color });
-    this.popText(j === 'WRONG' ? 'Wrong hand' : j, pos.x, pos.y - pos.r - 14, judgeColor(j), `+${pts}`);
+    this.popText(j, pos.x, pos.y - pos.r - 14, judgeColor(j), `+${pts}`);
     this.shake = Math.max(this.shake, j === 'PERFECT' ? 7 : 4);
     this.sfx.hit(j);
     this.checkLevel();
@@ -534,9 +592,9 @@ export class Game {
       const pos = this.padPos(p, F);
       const toHit = p.hitT - this.t;
       const life = clamp(1 - toHit / p.approach, 0, 1);
-      const appear = clamp(life / HIT.open, 0, 1);
+      const appear = clamp(life / 0.25, 0, 1); // pops in over the first quarter of its approach
       const r = pos.r * easeOutBack(appear);
-      const open = this.isOpen(p, this.t - (this.tapMode ? 0 : HIT.inputLag));
+      const open = this.t - (this.tapMode ? 0 : HIT.inputLag) >= this.freeFrom(p);
 
       // Timing ring closes onto the pad at the ideal moment.
       if (toHit > -HIT.late) {
@@ -550,7 +608,8 @@ export class Game {
       }
 
       // Rim in the hand's color, dark face, then the punch number filling the face.
-      ctx.globalAlpha = open ? 1 : 0.7 + 0.3 * appear;
+      // Dimmer until it can be hit, then full strength with a glow.
+      ctx.globalAlpha = open ? 1 : 0.7 * appear;
       if (open) {
         ctx.shadowColor = color;
         ctx.shadowBlur = pos.r * 0.5;

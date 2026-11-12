@@ -22,7 +22,9 @@ Pads use the trainer's number system and are colored by the hand that should thr
 
 Southpaw mode swaps lead and rear.
 
-**Timing.** A pad lights up once it can be hit. Hitting as the ring lands scores PERFECT (300), close to it GREAT (200), otherwise GOOD (100). The wrong hand still counts but only scores 50. Combos go in order: a pad waits until the earlier pad for the same hand is done.
+**Timing.** A pad lights up about half a second before its ring closes, and that is when it can be hit. Punch it while it is still dim and you'll see EARLY. Hitting as the ring lands scores PERFECT (300), close to it GREAT (200), otherwise GOOD (100).
+
+**One hand, one pad.** Only the matching fist counts: blue pads take your left, red pads your right. The other hand passing through does nothing. One punch takes one pad: combos go in order, and a fist that just landed has to stop or pull back before it can land again, so a follow-through can't knock out the next pad.
 
 **Combo.** Every 5 hits in a row adds x0.25 to your multiplier, up to x4. A miss resets it.
 
@@ -92,7 +94,7 @@ vendor/mediapipe/   MediaPipe Tasks Vision runtime
 
 After replacing anything in `vendor/` or `models/`, bump `ASSET_CACHE` in `sw.js` so installed copies pick up the new files.
 
-Gameplay feel lives in `js/config.js`. If punches are not registering, lower `HIT.minSpeed` or `HIT.travel`, or raise `HIT.reach`. If pads go off when you didn't mean to hit them, do the opposite. `PAD.size` sets how big pads are next to your body.
+Gameplay feel lives in `js/config.js`. If punches are not registering, lower `HIT.minSpeed` or `HIT.travel`, or raise `HIT.reach`. If pads go off when you didn't mean to hit them, do the opposite, or lower `HIT.early` so pads light up later. `PAD.size` sets how big pads are next to your body.
 
 ## Credits
 

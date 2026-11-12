@@ -85,6 +85,8 @@ class Hand {
     const dt = Math.max(16, t - ref.t) / 1000;
     this.vx = (x - ref.x) / dt;
     this.vy = (y - ref.y) / dt;
+    this.cur.vx = this.vx;
+    this.cur.vy = this.vy;
     this.cur.sp = Math.hypot(this.vx, this.vy);
   }
 

@@ -56,30 +56,35 @@ export const COMBOS = {
 
 export const SPOKEN = ['', 'one', 'two', 'three', 'four', 'five', 'six'];
 
-// A punch lands when the tracked fist moves toward a pad and gets within reach of
-// it. The fist does not need to stop on the pad or be at full speed right there:
-// the last `path` ms of its movement are checked, which covers tracking lag and
-// fists that blur between camera frames.
+// A punch lands when the matching fist (blue pads: left, red pads: right) drives
+// into a pad with real speed. The fist does not need to stop on the pad or be at
+// full speed right there: its last `path` ms of movement are checked, which
+// covers tracking lag and fists that blur between camera frames. Each pad only
+// counts movement that starts after the previous pad was hit, so one punch, its
+// follow-through, or the other hand moving with it can't take a second pad.
 export const HIT = {
-  open: 0.25,      // a pad takes hits once it has popped in: this share of its approach time
+  early: 500,      // ms before its ideal moment that a pad starts taking hits (it lights up then)
   late: 360,       // ms after its ideal moment before an unhit pad counts as a miss
   inputLag: 70,    // camera + tracking delay subtracted before judging timing
   perfect: 120,    // |timing error| at or under this is PERFECT
   great: 250,      // at or under this is GREAT, otherwise GOOD
   path: 320,       // ms of recent fist movement checked against each pad
-  minSpeed: 1.3,   // peak fist speed (shoulder widths per second) needed in that time
-  approach: 0.15,  // the fist must end at least this much closer to the pad (shoulder widths)
-  travel: 0.25,    // ...after moving at least this far, so a resting fist never counts
-  upperRise: 0.28, // uppercut pads need the fist to travel up at least this far
-  reach: 1.35,     // hit radius as a multiple of the drawn pad radius
+  minSpeed: 1.45,  // peak fist speed (shoulder widths per second) needed in that time
+  approach: 0.16,  // the fist must end at least this much closer to the pad (shoulder widths)
+  travel: 0.27,    // ...after moving at least this far, so a twitch or a resting fist never counts
+  upperRise: 0.3,  // uppercut pads need the fist to travel up at least this far
+  reach: 1.3,      // hit radius as a multiple of the drawn pad radius
   fist: 0.1,       // plus the size of the fist itself (shoulder widths)
   deep: 0.5,       // inside this share of the pad radius a hit counts at once
   cooldown: 160,   // one hand can land at most one pad per this many ms
+  rearmSpeed: 0.9, // after a hit, that fist counts again once it slows below this (shoulder widths/s)
+  rearmMax: 450,   // ...or pulls back, or after this many ms at the latest
+  hold: 150,       // a pad waits for an earlier pad for the same hand until this long past its ideal moment
 };
 
-export const POINTS = { PERFECT: 300, GREAT: 200, GOOD: 100, WRONG: 50, SLIP: 250 };
+export const POINTS = { PERFECT: 300, GREAT: 200, GOOD: 100, SLIP: 250 };
 
-export const HEALTH = { start: 100, miss: 8, caught: 15, heal: { PERFECT: 3, GREAT: 2, GOOD: 1, WRONG: 0, SLIP: 4 } };
+export const HEALTH = { start: 100, miss: 8, caught: 15, heal: { PERFECT: 3, GREAT: 2, GOOD: 1, SLIP: 4 } };
 
 // From speed 3 the coach throws punches back. A hook has to be rolled under
 // (head drops); a straight can be slipped (head moves to either side) or ducked.
