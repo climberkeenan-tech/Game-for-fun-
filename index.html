@@ -7,13 +7,23 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="description" content="Prop up your phone and punch the pads. A camera boxing game that runs in the browser.">
+<meta name="description" content="Set up your phone or laptop, step back and punch the pads. A camera boxing game that runs in the browser.">
+<meta name="apple-mobile-web-app-title" content="Mitt Rush">
 <title>Mitt Rush</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='28' fill='%23ff4f6a'/%3E%3Ccircle cx='32' cy='32' r='21' fill='%235c1424'/%3E%3Ccircle cx='32' cy='32' r='12' fill='none' stroke='%23f1ece1' stroke-width='4'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Big+Shoulders+Display:wght@700;900&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Big+Shoulders+Display:wght@700;900&display=swap" crossorigin="anonymous">
 <link rel="stylesheet" href="css/style.css">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<script>
+  // Laptop/desktop (mouse or trackpad) vs phone/tablet (touch) decides the setup copy.
+  (function () {
+    var desk = !!(window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches);
+    document.documentElement.classList.add(desk ? 'device-desk' : 'device-touch');
+  })();
+</script>
 </head>
 <body>
 <div id="stage">
@@ -31,9 +41,14 @@
         <span id="hudClockLbl" class="lbl">Round</span>
         <span id="hudClock" class="num">1:00</span>
       </div>
+      <div class="hud-btns">
+      <button id="fsHudBtn" class="icon-btn fs-btn" type="button" aria-label="Full screen" hidden>
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
       <button id="pauseBtn" class="icon-btn" type="button" aria-label="Pause">
         <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="5" y="4" width="5" height="16" rx="1" fill="currentColor"/><rect x="14" y="4" width="5" height="16" rx="1" fill="currentColor"/></svg>
       </button>
+      </div>
     </div>
     <div class="combo" id="hudComboWrap">
       <span id="hudCombo" class="num">0</span>
@@ -61,13 +76,13 @@
     <div class="ropes" aria-hidden="true"><i></i><i></i><i></i></div>
     <div class="menu-inner">
       <header class="brand">
-        <p class="eyebrow">Pad work for your phone camera</p>
+        <p class="eyebrow">Pad work for your phone or laptop camera</p>
         <h1 class="logo"><span class="w1">Mitt</span><span class="w2">Rush</span></h1>
-        <p class="tagline">Your phone holds the mitts. You throw the punches.</p>
+        <p class="tagline">Your <span class="only-touch">phone</span><span class="only-desk">laptop</span> holds the mitts. You throw the punches.</p>
       </header>
 
       <ol class="howto">
-        <li><span class="step"><b>Prop your phone up</b> at about chest height with the screen facing you.</span></li>
+        <li><span class="step only-touch"><b>Prop your phone up</b> at about chest height with the screen facing you.</span><span class="step only-desk"><b>Set your laptop on a table or counter</b> and tilt the screen so the camera faces the spot where you will stand.</span></li>
         <li><span class="step"><b>Step back about 6 feet</b> so your head, shoulders and both fists are in the shot.</span></li>
         <li><span class="step"><b>Punch each pad as its ring closes.</b> <span class="hl hl-l">Blue</span> takes your left hand, <span class="hl hl-r">red</span> your right. Duck under the striped bar.</span></li>
       </ol>
@@ -100,7 +115,15 @@
       <div class="cta">
         <button id="startBtn" class="btn-primary" type="button">Glove up</button>
         <p id="loadStatus" class="status" role="status">Loading body tracking…</p>
-        <button id="tapBtn" class="btn-link" type="button">No camera? Play with taps</button>
+        <button id="tapBtn" class="btn-link" type="button"><span class="only-touch">No camera? Play with taps</span><span class="only-desk">No camera? Play with your mouse</span></button>
+      </div>
+      <div class="extras">
+        <div class="extras-row">
+          <button id="installBtn" class="btn-ghost" type="button" hidden>Install as an app</button>
+          <button id="fsMenuBtn" class="btn-ghost" type="button" hidden>Full screen</button>
+        </div>
+        <p id="installHint" class="hint" hidden></p>
+        <p class="hint only-desk">Keys: Space pauses and resumes. F toggles full screen.</p>
       </div>
       <p class="best">Personal best <b id="bestScore">0</b></p>
     </div>

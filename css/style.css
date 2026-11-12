@@ -10,7 +10,7 @@
   --right: #ff4f6a;
   --gold: #ffcf4a;
   --hazard: #ffb02e;
-  --display: "Big Shoulders Display", Impact, "Arial Narrow Bold", sans-serif;
+  --display: "Big Shoulders Display", Impact, Haettenschweiler, "Arial Narrow Bold", "Arial Narrow", "Roboto Condensed", sans-serif;
   --body: "Barlow Semi Condensed", "Arial Narrow", system-ui, sans-serif;
   --safe-t: env(safe-area-inset-top, 0px);
   --safe-b: env(safe-area-inset-bottom, 0px);
@@ -134,7 +134,7 @@ body.cam-on #cam { opacity: 1; }
   min-width: 116px;
 }
 .score-tape .lbl { opacity: 0.65; }
-.score-tape .num { font-size: 34px; }
+.score-tape .num { font-size: clamp(34px, 3vw, 50px); }
 
 .clock {
   display: flex;
@@ -148,9 +148,10 @@ body.cam-on #cam { opacity: 1; }
   backdrop-filter: blur(8px);
 }
 .clock .lbl { color: var(--chalk-dim); }
-.clock .num { font-size: 28px; }
+.clock .num { font-size: clamp(28px, 2.5vw, 40px); }
 .clock.hot .num { color: var(--right); }
 
+.hud-btns { display: flex; gap: 8px; }
 .icon-btn {
   pointer-events: auto;
   display: grid;
@@ -167,7 +168,7 @@ body.cam-on #cam { opacity: 1; }
 
 .combo {
   position: absolute;
-  top: calc(var(--safe-t) + 70px);
+  top: calc(var(--safe-t) + clamp(70px, 6.5vw, 100px));
   right: max(14px, var(--safe-r));
   display: flex;
   flex-direction: column;
@@ -176,9 +177,9 @@ body.cam-on #cam { opacity: 1; }
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
   transition: opacity 0.2s;
 }
-.combo .num { font-size: 60px; }
+.combo .num { font-size: clamp(60px, 5.5vw, 88px); }
 .combo .lbl { color: var(--chalk-dim); }
-.combo .mult { font: 900 20px/1 var(--display); color: var(--gold); }
+.combo .mult { font: 900 clamp(20px, 1.8vw, 28px)/1 var(--display); color: var(--gold); }
 .combo.zero { opacity: 0.35; }
 .combo.bump .num { animation: bump 0.22s ease-out; }
 @keyframes bump {
@@ -225,13 +226,13 @@ body.cam-on #cam { opacity: 1; }
 
 .speed { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
 .speed .lbl { color: var(--chalk-dim); }
-.speed .num { font-size: 32px; }
+.speed .num { font-size: clamp(32px, 2.8vw, 44px); }
 
 /* ------------------------------------------------------------------ callouts */
 
 .call {
   position: absolute;
-  top: calc(var(--safe-t) + 96px);
+  top: calc(var(--safe-t) + clamp(96px, 9vw, 130px));
   left: 0;
   right: 0;
   display: flex;
@@ -401,6 +402,7 @@ h1, h2, p { margin: 0; }
 
 .menu-inner {
   position: relative;
+  margin-block: auto;
   width: 100%;
   max-width: 440px;
   display: flex;
@@ -604,8 +606,57 @@ h1, h2, p { margin: 0; }
   .combo .num { font-size: 50px; }
 }
 
-@media (min-width: 700px) and (min-height: 500px) {
-  .menu { justify-content: center; }
+/* Phone vs laptop copy. Touch copy is the default if the device check never runs. */
+.only-desk { display: none; }
+.device-desk .only-desk { display: revert; }
+.device-desk .only-touch { display: none; }
+.device-desk .howto .step.only-desk { display: block; }
+
+.extras { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.extras-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.extras-row:not(:has(button:not([hidden]))) { display: none; }
+.btn-ghost {
+  padding: 9px 14px 8px;
+  border: 1.5px solid rgba(241, 236, 225, 0.35);
+  border-radius: 4px;
+  background: transparent;
+  font: 700 13px/1 var(--body);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--chalk);
+}
+.btn-ghost:hover { border-color: var(--chalk); }
+.hint { color: var(--chalk-dim); font-size: 13.5px; text-align: center; max-width: 40ch; text-wrap: balance; }
+
+@media (hover: hover) {
+  .btn-primary:hover { background: #fffaf0; }
+  .btn-secondary:hover, .chip:hover { border-color: var(--chalk); }
+  .btn-link:hover { color: var(--chalk); }
+  .icon-btn:hover { border-color: var(--chalk); }
+}
+
+/* Laptops and other wide landscape screens: logo on the left, setup on the right. */
+@media (min-width: 900px) and (min-aspect-ratio: 5/4) {
+  .menu-inner {
+    max-width: 1080px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 440px);
+    grid-auto-flow: dense;
+    column-gap: clamp(40px, 6vw, 96px);
+    row-gap: 22px;
+    align-items: start;
+  }
+  .menu-inner > * { grid-column: 2; }
+  .menu-inner > .brand { grid-column: 1; grid-row: 1 / span 5; align-self: center; }
+  .logo { font-size: clamp(120px, 15vw, 230px); }
+  .tagline { font-size: clamp(19px, 1.6vw, 24px); }
+  .eyebrow { font-size: 13px; }
+  .ropes { padding-top: 0; justify-content: center; gap: clamp(40px, 5vw, 70px); }
+  .cta { align-items: stretch; }
+  .cta .btn-primary { max-width: none; }
+  .howto li { font-size: 17px; }
+  .chip { font-size: 15px; }
+  .opt-label { font-size: 13px; }
 }
 
 @keyframes fade-out {

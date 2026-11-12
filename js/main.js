@@ -35,6 +35,8 @@ const els = {
 const screens = { menu: $('menu'), setup: $('setup'), pause: $('pause'), results: $('results') };
 const ctx = els.canvas.getContext('2d');
 const DEBUG = new URLSearchParams(location.search).has('debug');
+const IS_DESK = document.documentElement.classList.contains('device-desk');
+const DEVICE_NAME = IS_DESK ? 'laptop' : 'phone';
 
 // ---------------------------------------------------------------- settings
 
@@ -116,7 +118,7 @@ function refreshLoadStatus(message, isError) {
   if (trackerState === 'loading') el.textContent = 'Loading body tracking…';
   else if (trackerState === 'ready') el.textContent = 'Ready. Video stays on your device.';
   else {
-    el.textContent = 'Body tracking could not start in this browser. Try Safari or Chrome, or play with taps.';
+    el.textContent = 'Body tracking could not start in this browser. Try Safari or Chrome, or play without the camera.';
     el.classList.add('error');
   }
 }
@@ -133,7 +135,19 @@ function resize() {
   const safeTop = parseFloat(cs.paddingTop) || 0;
   const safeBottom = parseFloat(cs.paddingBottom) || 0;
   game.view = { W: view.W, H: view.H, top: safeTop + 92, bottom: safeBottom + 76 };
+  measureHud();
   computeFit();
+}
+
+// Keep pads clear of the HUD, whose size depends on the screen.
+function measureHud() {
+  if (els.hud.hidden) return;
+  const top = els.hud.querySelector('.hud-top').getBoundingClientRect().bottom;
+  const bottomEdge = els.hud.querySelector('.hud-bottom').getBoundingClientRect().top;
+  if (top > 0 && bottomEdge > top) {
+    game.view.top = top + 10;
+    game.view.bottom = view.H - bottomEdge + 10;
+  }
 }
 
 // Cover the screen with the camera image unless that would crop away too much
@@ -317,6 +331,7 @@ function beginCountdown(now) {
   hudCache.clear();
   updateHud();
   els.hud.hidden = false;
+  measureHud();
   els.countdown.hidden = false;
 }
 
@@ -360,9 +375,12 @@ function pause() {
   coach.stop();
   els.countdown.hidden = true;
   showScreen('pause');
+  // Space then activates Resume instead of the pause button that still has focus.
+  $('resumeBtn').focus({ preventScroll: true });
 }
 
 function resume() {
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   showScreen(null);
   sfx.unlock();
   if (!game.running) {
@@ -578,12 +596,140 @@ document.addEventListener('visibilitychange', () => {
   else if (state === 'setup' || state === 'paused') requestWakeLock();
 });
 
+// Laptop keys: Space or P pauses and resumes, Escape pauses, F toggles full screen,
+// Enter starts from the menu or runs it back from the scorecard.
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' || e.key === 'p') {
+  if (e.altKey || e.ctrlKey || e.metaKey) return;
+  const key = e.key;
+  const onButton = !!(e.target && e.target.closest && e.target.closest('button'));
+  if (key === ' ' || key === 'Spacebar' || key === 'p' || key === 'P') {
+    if (state === 'play' || state === 'countdown') {
+      e.preventDefault();
+      pause();
+    } else if (state === 'paused' && !(onButton && key === ' ')) {
+      e.preventDefault();
+      resume();
+    }
+  } else if (key === 'Escape') {
     if (state === 'play' || state === 'countdown') pause();
     else if (state === 'paused') resume();
+  } else if ((key === 'f' || key === 'F') && FS_ENABLED) {
+    e.preventDefault();
+    toggleFullscreen();
+  } else if (key === 'Enter' && !onButton) {
+    if (state === 'menu' && !els.startBtn.disabled) els.startBtn.click();
+    else if (state === 'results') $('againBtn').click();
   }
 });
+
+// ---------------------------------------------------------------- full screen
+
+const FS_ENABLED = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+
+function isFullscreen() {
+  return !!(document.fullscreenElement || document.webkitFullscreenElement);
+}
+
+function toggleFullscreen() {
+  try {
+    if (isFullscreen()) {
+      const exit = document.exitFullscreen || document.webkitExitFullscreen;
+      const p = exit && exit.call(document);
+      if (p && p.catch) p.catch(() => {});
+    } else {
+      const el = document.documentElement;
+      const req = el.requestFullscreen || el.webkitRequestFullscreen;
+      const p = req && req.call(el);
+      if (p && p.catch) p.catch(() => {});
+    }
+  } catch (e) {
+    /* full screen refused: carry on windowed */
+  }
+}
+
+function syncFullscreen() {
+  const on = isFullscreen();
+  const menuBtn = $('fsMenuBtn');
+  const hudBtn = $('fsHudBtn');
+  menuBtn.hidden = !FS_ENABLED;
+  hudBtn.hidden = !FS_ENABLED;
+  menuBtn.textContent = on ? 'Exit full screen' : 'Full screen';
+  hudBtn.setAttribute('aria-label', on ? 'Exit full screen' : 'Full screen');
+  hudBtn.setAttribute('aria-pressed', String(on));
+  setTimeout(resize, 60);
+}
+
+$('fsMenuBtn').addEventListener('click', toggleFullscreen);
+$('fsHudBtn').addEventListener('click', (e) => {
+  toggleFullscreen();
+  e.currentTarget.blur();
+});
+document.addEventListener('fullscreenchange', syncFullscreen);
+document.addEventListener('webkitfullscreenchange', syncFullscreen);
+
+// ---------------------------------------------------------------- install as an app
+
+const RUNNING_AS_APP =
+  (window.matchMedia && (matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches)) ||
+  navigator.standalone === true;
+let installPrompt = null;
+let installed = false;
+
+function syncInstall() {
+  const btn = $('installBtn');
+  const hint = $('installHint');
+  if (RUNNING_AS_APP || installed) {
+    btn.hidden = true;
+    hint.hidden = true;
+    return;
+  }
+  if (installPrompt) {
+    btn.hidden = false;
+    btn.textContent = `Install on this ${IS_DESK ? 'computer' : 'phone'}`;
+    hint.hidden = true;
+    return;
+  }
+  btn.hidden = true;
+  const ua = navigator.userAgent;
+  const iOS = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const macSafari = !iOS && /Macintosh/.test(ua) && /Safari\//.test(ua) && !/Chrome|Chromium|CriOS|Edg|OPR|Firefox|FxiOS/.test(ua);
+  let text = '';
+  if (iOS) text = 'Keep it on your home screen: tap Share, then Add to Home Screen.';
+  else if (macSafari) text = 'Keep it in your Dock: in Safari choose File, then Add to Dock.';
+  hint.textContent = text;
+  hint.hidden = !text;
+}
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  installPrompt = e;
+  syncInstall();
+});
+window.addEventListener('appinstalled', () => {
+  installPrompt = null;
+  installed = true;
+  syncInstall();
+});
+$('installBtn').addEventListener('click', async () => {
+  const promptEvent = installPrompt;
+  if (!promptEvent) return;
+  installPrompt = null;
+  try {
+    await promptEvent.prompt();
+    await promptEvent.userChoice;
+  } catch (e) {
+    /* prompt dismissed or unavailable */
+  }
+  syncInstall();
+});
+
+// Offline support: the service worker keeps the game, tracking model and fonts
+// on this device after the first visit.
+if ('serviceWorker' in navigator && window.isSecureContext) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch((err) => console.warn('Offline support unavailable', err));
+  });
+}
 
 // ---------------------------------------------------------------- setup check
 
@@ -594,12 +740,13 @@ function updateSetup(now) {
   $('ckLeft').classList.toggle('ok', !!p.left);
   $('ckRight').classList.toggle('ok', !!p.right);
   const all = p.head && p.shoulders && p.left && p.right;
-  const tooClose = body.S > view.W * 0.34;
+  // Leave room for hooks out to the side and for pads above the head.
+  const tooClose = body.S > Math.min(view.W * 0.34, view.H * 0.36);
   let title = 'Step into the shot';
   let hint;
   if (trackerState === 'loading') hint = 'Loading body tracking…';
   else if (trackerState === 'failed') hint = 'Body tracking could not start in this browser. Try Safari or Chrome.';
-  else if (!body.hasPose) hint = 'Stand about 6 feet from your phone, facing the screen.';
+  else if (!body.hasPose) hint = `Stand about 6 feet from your ${DEVICE_NAME}, facing the screen.`;
   else if (!p.shoulders || !p.head) hint = 'Get your head and both shoulders in the shot.';
   else if (tooClose) hint = 'Step back a little so there is room for hooks.';
   else if (!p.left || !p.right) hint = 'Bring both fists up to your chin.';
@@ -714,6 +861,8 @@ function frame(now) {
 }
 
 syncChips();
+syncFullscreen();
+syncInstall();
 $('bestScore').textContent = fmt(best);
 if (document.fonts && document.fonts.load) {
   document.fonts.load('900 40px "Big Shoulders Display"').catch(() => {});

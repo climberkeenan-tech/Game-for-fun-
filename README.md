@@ -1,10 +1,11 @@
 # Mitt Rush
 
-A boxing pad-work game that runs in a phone browser. Prop your phone up, step back, and punch the pads that appear around you on screen. The front camera tracks your body on the device itself. No app install, no account, and no video leaves the phone.
+A boxing pad-work game that runs in the browser on a phone or a laptop. Set the device up, step back, and punch the pads that appear around you on screen. The camera tracks your body on the device itself. No account, and no video leaves the device.
 
 ## How to play
 
-1. Lean your phone against something at about chest height with the screen facing you.
+1. **Phone:** lean it against something at about chest height with the screen facing you.
+   **Laptop:** set it on a table or counter and tilt the screen so the camera faces the spot where you will stand.
 2. Step back about 6 feet (2 m) so your head, shoulders and both fists are in the shot.
 3. Hit each pad as its white ring closes onto it.
 
@@ -31,7 +32,20 @@ Southpaw mode swaps lead and rear.
 
 **Speed.** Scoring unlocks 8 speed levels with faster pads and longer combinations (1-2, 1-2-3, 1-6-3-2 and so on). The coach calls each combination out loud.
 
-**Modes.** 1-minute round, 3-minute round, or survival until your health runs out. No camera? "Play with taps" works on any screen.
+**Modes.** 1-minute round, 3-minute round, or survival until your health runs out. No camera? "Play with taps" (or "Play with your mouse" on a laptop) works on any screen.
+
+**Laptop keys.** Space or P pauses and resumes, Escape pauses, F toggles full screen, Enter starts a round from the menu or runs it back from the scorecard.
+
+## Install it as an app
+
+Once the game is hosted (below), you can install it so it gets its own icon and window and keeps working offline after the first load:
+
+- **Chrome or Edge (Windows, Mac, Chromebook, Android):** use the **Install on this computer** button on the start screen, or the install icon at the right end of the address bar.
+- **Safari on a Mac (macOS Sonoma or later):** File, then Add to Dock.
+- **iPhone or iPad:** Share, then Add to Home Screen.
+- **Firefox:** no app install. Bookmark the page instead.
+
+The first visit downloads about 16 MB (the body-tracking model and runtime). After that it loads from the device.
 
 ## Hosting it (GitHub Pages)
 
@@ -42,7 +56,7 @@ The camera only works over https, and GitHub Pages provides that for free:
 3. Pick the branch that holds this code and the **/ (root)** folder, then **Save**.
 4. After a minute the game is live at `https://<your-user>.github.io/<repo-name>/`.
 
-Open that link on your phone, tap **Glove up**, and allow the camera.
+Open that link on your phone or laptop, tap **Glove up**, and allow the camera.
 
 ## Running locally
 
@@ -60,6 +74,8 @@ Add `?debug` to the URL to show tracking speed (pose frames per second, GPU or C
 
 ```
 index.html          screens and HUD markup
+manifest.webmanifest, icons/   app install metadata and icons
+sw.js               offline support (caches the game, model and fonts)
 css/style.css       all styling
 js/main.js          camera, screens, main loop, HUD, results
 js/game.js          pads, timing, scoring, ducks, drawing
@@ -71,6 +87,8 @@ js/coach.js         spoken combination calls
 models/             pose_landmarker_lite.task
 vendor/mediapipe/   MediaPipe Tasks Vision runtime
 ```
+
+After replacing anything in `vendor/` or `models/`, bump `ASSET_CACHE` in `sw.js` so installed copies pick up the new files.
 
 Gameplay feel lives in `js/config.js`. If punches are not registering, lower `HIT.minSpeed`. If pads feel too easy to clip, lower `HIT.reach`.
 

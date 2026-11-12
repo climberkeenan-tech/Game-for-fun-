@@ -125,6 +125,11 @@ export class Game {
     return LEVELS[this.levelIdx];
   }
 
+  // Pop-up text size: phone-sized on phones, bigger on laptop and desktop screens.
+  get textBase() {
+    return clamp(Math.min(this.view.W, this.view.H) * 0.045, 28, 46);
+  }
+
   // ---------------------------------------------------------------- spawning
 
   schedule() {
@@ -600,7 +605,7 @@ export class Game {
     ctx.lineTo(W - 12, g.line);
     ctx.stroke();
     ctx.setLineDash([]);
-    ctx.font = `700 13px ${FONT_BODY}`;
+    ctx.font = `700 ${Math.round(Math.max(13, this.textBase * 0.45))}px ${FONT_BODY}`;
     ctx.textAlign = 'right';
     ctx.textBaseline = 'bottom';
     ctx.fillStyle = COLORS.chalk;
@@ -656,12 +661,13 @@ export class Game {
     ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    const base = this.textBase;
     for (const t of this.texts) {
       const k = clamp((this.fxT - t.t0) / 800, 0, 1);
       const pop = k < 0.12 ? 0.6 + (k / 0.12) * 0.55 : k < 0.2 ? 1.15 - ((k - 0.12) / 0.08) * 0.15 : 1;
-      const y = t.y - 36 * easeOut(k);
+      const y = t.y - base * 1.2 * easeOut(k);
       ctx.globalAlpha = k < 0.7 ? 1 : 1 - (k - 0.7) / 0.3;
-      const size = Math.round(30 * pop);
+      const size = Math.round(base * pop);
       ctx.font = `900 ${size}px ${FONT_DISPLAY}`;
       ctx.lineWidth = 5;
       ctx.strokeStyle = COLORS.ink;
@@ -669,7 +675,7 @@ export class Game {
       ctx.fillStyle = t.color;
       ctx.fillText(t.text, t.x, y);
       if (t.sub) {
-        ctx.font = `700 17px ${FONT_BODY}`;
+        ctx.font = `700 ${Math.round(base * 0.56)}px ${FONT_BODY}`;
         ctx.lineWidth = 4;
         ctx.strokeText(t.sub, t.x, y + size * 0.72);
         ctx.fillStyle = COLORS.chalk;
