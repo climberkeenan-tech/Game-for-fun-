@@ -84,7 +84,7 @@
       <ol class="howto">
         <li><span class="step only-touch"><b>Prop your phone up</b> at about chest height with the screen facing you.</span><span class="step only-desk"><b>Set your laptop on a table or counter</b> and tilt the screen so the camera faces the spot where you will stand.</span></li>
         <li><span class="step"><b>Step back about 6 feet</b> so your head, shoulders and both fists are in the shot.</span></li>
-        <li><span class="step"><b>Punch each pad as its ring closes.</b> <span class="hl hl-l">Blue</span> takes your left hand, <span class="hl hl-r">red</span> your right. Duck under the striped bar.</span></li>
+        <li><span class="step"><b>Punch each pad as its ring closes.</b> <span class="hl hl-l">Blue</span> takes your left hand, <span class="hl hl-r">red</span> your right. When a glove comes back at you, slip or duck it.</span></li>
       </ol>
 
       <div class="options">
@@ -108,6 +108,13 @@
           <div class="chips">
             <button class="chip" type="button" data-opt="coach" data-val="on">Calls combos</button>
             <button class="chip" type="button" data-opt="coach" data-val="off">Quiet</button>
+          </div>
+        </div>
+        <div class="opt" role="group" aria-label="Counter punches to dodge">
+          <span class="opt-label">Dodges</span>
+          <div class="chips">
+            <button class="chip" type="button" data-opt="dodges" data-val="on">Slip &amp; duck</button>
+            <button class="chip" type="button" data-opt="dodges" data-val="off">Off</button>
           </div>
         </div>
       </div>
@@ -140,6 +147,7 @@
         <li id="ckRight" class="ck-r">Right fist</li>
       </ul>
       <div class="hold"><i id="holdFill"></i></div>
+      <p class="setup-tip">Tracking works best with light in front of you, not a bright window behind you.</p>
       <button id="setupBack" class="btn-link" type="button">Back to menu</button>
     </div>
   </section>
@@ -197,7 +205,7 @@
           <div><dt>Accuracy</dt><dd id="stAcc">0%</dd></div>
           <div><dt>Perfect</dt><dd id="stPerfect">0</dd></div>
           <div><dt>Best combo</dt><dd id="stCombo">0</dd></div>
-          <div><dt>Ducks slipped</dt><dd id="stSlips">0 / 0</dd></div>
+          <div><dt>Punches dodged</dt><dd id="stSlips">0 / 0</dd></div>
           <div><dt>Missed</dt><dd id="stMissed">0</dd></div>
           <div><dt>Time</dt><dd id="stTime">0:00</dd></div>
           <div><dt>Top speed</dt><dd id="stSpeed">1</dd></div>

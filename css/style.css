@@ -413,6 +413,7 @@ h1, h2, p { margin: 0; }
 .brand { display: flex; flex-direction: column; gap: 8px; }
 .eyebrow { font: 700 12px/1 var(--body); letter-spacing: 0.18em; text-transform: uppercase; color: var(--chalk-dim); }
 .logo {
+  pointer-events: none;
   display: flex;
   flex-direction: column;
   font: 900 clamp(84px, 30vw, 148px)/0.8 var(--display);
@@ -494,6 +495,7 @@ h1, h2, p { margin: 0; }
 }
 .setup-card h2 { font: 900 38px/1 var(--display); text-transform: uppercase; }
 .setup-hint { color: var(--chalk); font-size: 17px; min-height: 2.8em; text-wrap: balance; }
+.setup-tip { color: var(--chalk-dim); font-size: 14px; margin: 0; text-wrap: balance; }
 .checks { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
 .checks li {
   padding: 6px 10px 5px;
@@ -646,8 +648,8 @@ h1, h2, p { margin: 0; }
     row-gap: 22px;
     align-items: start;
   }
-  .menu-inner > * { grid-column: 2; }
-  .menu-inner > .brand { grid-column: 1; grid-row: 1 / span 5; align-self: center; }
+  .menu-inner > * { grid-column: 2; position: relative; z-index: 1; }
+  .menu-inner > .brand { grid-column: 1; grid-row: 1 / span 5; align-self: center; z-index: 0; }
   .logo { font-size: clamp(120px, 15vw, 230px); }
   .tagline { font-size: clamp(19px, 1.6vw, 24px); }
   .eyebrow { font-size: 13px; }
@@ -681,3 +683,14 @@ h1, h2, p { margin: 0; }
   .chip { padding: 7px 10px 6px; font-size: 13px; }
   .ropes { padding-top: calc(var(--safe-t) + 72px); gap: 28px; }
 }
+
+/* Short laptop windows: keep the two-column menu's big logo instead of the
+   short-phone sizes above. */
+@media (min-width: 900px) and (min-aspect-ratio: 5/4) and (max-height: 720px) {
+  .logo { font-size: clamp(120px, min(15vw, 30vh), 230px); }
+  .tagline { font-size: clamp(19px, 1.6vw, 24px); }
+  .ropes { padding-top: 0; gap: clamp(40px, 5vw, 70px); }
+}
+
+/* Phones already have Full screen on the menu; the HUD has no room for it. */
+.device-touch .hud-btns .fs-btn { display: none; }

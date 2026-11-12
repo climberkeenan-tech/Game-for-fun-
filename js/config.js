@@ -4,13 +4,18 @@
 // x is outward toward the punching hand's side, y is down (negative = up).
 
 export const PUNCHES = {
-  1: { tag: 'Jab',   role: 'lead', x: 0.85, y: -0.80, kind: 'straight' },
-  2: { tag: 'Cross', role: 'rear', x: 0.85, y: -0.80, kind: 'straight' },
-  3: { tag: 'Hook',  role: 'lead', x: 1.45, y: -0.55, kind: 'hook' },
-  4: { tag: 'Hook',  role: 'rear', x: 1.45, y: -0.55, kind: 'hook' },
-  5: { tag: 'Upper', role: 'lead', x: 0.45, y: 0.05,  kind: 'upper' },
-  6: { tag: 'Upper', role: 'rear', x: 0.45, y: 0.05,  kind: 'upper' },
+  1: { tag: 'Jab',   role: 'lead', x: 0.78, y: -0.8, kind: 'straight' },
+  2: { tag: 'Cross', role: 'rear', x: 0.78, y: -0.8, kind: 'straight' },
+  3: { tag: 'Hook',  role: 'lead', x: 1.35, y: -0.55, kind: 'hook' },
+  4: { tag: 'Hook',  role: 'rear', x: 1.35, y: -0.55, kind: 'hook' },
+  5: { tag: 'Upper', role: 'lead', x: 0.42, y: 0.08,  kind: 'upper' },
+  6: { tag: 'Upper', role: 'rear', x: 0.42, y: 0.08,  kind: 'upper' },
 };
+
+// Pad size on screen, as a share of shoulder width. The cap only stops pads
+// swamping a small window: it scales with the screen, so a laptop gets the same
+// pad size relative to your body as a phone does.
+export const PAD = { size: 0.38, min: 30, maxShare: 0.16 };
 
 // Speed levels unlock by score. Times are in milliseconds.
 // approach: how long a pad is on screen before its ideal hit moment
@@ -32,7 +37,7 @@ export const LEVELS = [
 export const LEVEL_BANNERS = [
   null,
   ['Pick it up', 'Speed 2 · two-punch combos'],
-  ['Hands up', 'Speed 3 · duck under the bar'],
+  ['Hands up', 'Speed 3 · slip and roll the counters'],
   ['Stay sharp', 'Speed 4 · less time per pad'],
   ['Championship rounds', 'Speed 5 · four-punch combos'],
   ['Keep firing', 'Speed 6 · no let-up'],
@@ -51,25 +56,37 @@ export const COMBOS = {
 
 export const SPOKEN = ['', 'one', 'two', 'three', 'four', 'five', 'six'];
 
+// A punch lands when the tracked fist moves toward a pad and gets within reach of
+// it. The fist does not need to stop on the pad or be at full speed right there:
+// the last `path` ms of its movement are checked, which covers tracking lag and
+// fists that blur between camera frames.
 export const HIT = {
-  early: 420,      // a pad accepts hits this long before its ideal moment
-  late: 300,       // and this long after; past that it counts as a miss
+  open: 0.25,      // a pad takes hits once it has popped in: this share of its approach time
+  late: 360,       // ms after its ideal moment before an unhit pad counts as a miss
   inputLag: 70,    // camera + tracking delay subtracted before judging timing
-  perfect: 110,    // |timing error| at or under this is PERFECT
-  great: 220,      // at or under this is GREAT, otherwise GOOD
-  minSpeed: 1.7,   // fist speed (shoulder widths per second) needed to count as a punch
-  upperSpeed: 1.0, // uppercut pads need the fist moving up at least this fast
-  reach: 1.25,     // hit radius as a multiple of the drawn pad radius
-  cooldown: 170,   // one hand can land at most one pad per this many ms
+  perfect: 120,    // |timing error| at or under this is PERFECT
+  great: 250,      // at or under this is GREAT, otherwise GOOD
+  path: 320,       // ms of recent fist movement checked against each pad
+  minSpeed: 1.3,   // peak fist speed (shoulder widths per second) needed in that time
+  approach: 0.15,  // the fist must end at least this much closer to the pad (shoulder widths)
+  travel: 0.25,    // ...after moving at least this far, so a resting fist never counts
+  upperRise: 0.28, // uppercut pads need the fist to travel up at least this far
+  reach: 1.35,     // hit radius as a multiple of the drawn pad radius
+  fist: 0.1,       // plus the size of the fist itself (shoulder widths)
+  deep: 0.5,       // inside this share of the pad radius a hit counts at once
+  cooldown: 160,   // one hand can land at most one pad per this many ms
 };
 
 export const POINTS = { PERFECT: 300, GREAT: 200, GOOD: 100, WRONG: 50, SLIP: 250 };
 
 export const HEALTH = { start: 100, miss: 8, caught: 15, heal: { PERFECT: 3, GREAT: 2, GOOD: 1, WRONG: 0, SLIP: 4 } };
 
+// From speed 3 the coach throws punches back. A hook has to be rolled under
+// (head drops); a straight can be slipped (head moves to either side) or ducked.
 export const DUCK = {
-  drop: 0.38,      // nose must sit this many shoulder widths below standing height
-  recover: 900,    // quiet time after a duck before the next set
+  drop: 0.35,      // roll under: nose this many shoulder widths below standing height
+  slip: 0.35,      // slip: nose this far to the side of where the punch was aimed
+  recover: 900,    // quiet time after a dodge before the next set
 };
 
 // Multiplier grows by 0.25 every 5 hits in a row, up to x4.

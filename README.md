@@ -7,7 +7,7 @@ A boxing pad-work game that runs in the browser on a phone or a laptop. Set the 
 1. **Phone:** lean it against something at about chest height with the screen facing you.
    **Laptop:** set it on a table or counter and tilt the screen so the camera faces the spot where you will stand.
 2. Step back about 6 feet (2 m) so your head, shoulders and both fists are in the shot.
-3. Hit each pad as its white ring closes onto it.
+3. Punch each pad as its white ring closes onto it. You don't have to hit dead center or stop on the pad: driving your fist into it counts.
 
 Pads use the trainer's number system and are colored by the hand that should throw them:
 
@@ -22,19 +22,21 @@ Pads use the trainer's number system and are colored by the hand that should thr
 
 Southpaw mode swaps lead and rear.
 
-**Timing.** Hitting as the ring lands scores PERFECT (300), close to it GREAT (200), otherwise GOOD (100). The wrong hand still counts but only scores 50.
+**Timing.** A pad lights up once it can be hit. Hitting as the ring lands scores PERFECT (300), close to it GREAT (200), otherwise GOOD (100). The wrong hand still counts but only scores 50. Combos go in order: a pad waits until the earlier pad for the same hand is done.
 
 **Combo.** Every 5 hits in a row adds x0.25 to your multiplier, up to x4. A miss resets it.
 
-**Health.** A missed pad costs 8, getting caught by a duck bar costs 15. Clean hits win a little back. At zero you are knocked down and the round ends.
+**Health.** A missed pad costs 8, getting caught by a counter punch costs 15. Clean hits win a little back. At zero you are knocked down and the round ends.
 
-**Ducks.** From speed 3 on, a striped bar swings in at head height. Get your head below the dashed line before it lands.
+**Slips and ducks.** From speed 3 on, the coach throws punches back at you. The coach calls "duck" for a hook swinging in from the side: roll under it by dropping your head. "Slip" means a straight coming at your face: move your head to either side, or duck. The ring around your head turns white once you're out of the way. Turn these off with **Dodges: Off** on the start screen.
 
 **Speed.** Scoring unlocks 8 speed levels with faster pads and longer combinations (1-2, 1-2-3, 1-6-3-2 and so on). The coach calls each combination out loud.
 
 **Modes.** 1-minute round, 3-minute round, or survival until your health runs out. No camera? "Play with taps" (or "Play with your mouse" on a laptop) works on any screen.
 
-**Laptop keys.** Space or P pauses and resumes, Escape pauses, F toggles full screen, Enter starts a round from the menu or runs it back from the scorecard.
+**Laptop keys.** Space or P pauses and resumes, Escape pauses (in full screen it leaves full screen and pauses), F toggles full screen, Enter starts a round from the menu or runs it back from the scorecard.
+
+**Body tracking.** The game uses MediaPipe's full pose model, which places wrists and fists more accurately than the lite one. If a device can't run it at camera speed, the game switches to the lite model by itself. Tracking is sharpest with light in front of you and no bright window behind you.
 
 ## Install it as an app
 
@@ -45,7 +47,7 @@ Once the game is hosted (below), you can install it so it gets its own icon and 
 - **iPhone or iPad:** Share, then Add to Home Screen.
 - **Firefox:** no app install. Bookmark the page instead.
 
-The first visit downloads about 16 MB (the body-tracking model and runtime). After that it loads from the device.
+The first visit downloads about 20 MB (the body-tracking model and runtime). After that it loads from the device.
 
 ## Hosting it (GitHub Pages)
 
@@ -68,7 +70,7 @@ python3 -m http.server 8000
 
 Then open http://localhost:8000. Browsers allow the camera on `localhost`. A phone on the same Wi-Fi needs https, so use GitHub Pages for phone testing.
 
-Add `?debug` to the URL to show tracking speed (pose frames per second, GPU or CPU) in the corner.
+Add `?debug` to the URL to show tracking speed in the corner: GPU or CPU, which pose model, milliseconds per frame, and pose frames per second. Add `?model=lite` or `?model=full` to force a pose model.
 
 ## Project layout
 
@@ -78,21 +80,21 @@ manifest.webmanifest, icons/   app install metadata and icons
 sw.js               offline support (caches the game, model and fonts)
 css/style.css       all styling
 js/main.js          camera, screens, main loop, HUD, results
-js/game.js          pads, timing, scoring, ducks, drawing
-js/body.js          turns pose landmarks into fist positions and speeds
-js/tracker.js       MediaPipe pose landmarker wrapper (GPU with CPU fallback)
+js/game.js          pads, hit detection, timing, scoring, counter punches, drawing
+js/body.js          smooths pose landmarks and turns them into fist positions and speeds
+js/tracker.js       MediaPipe pose landmarker wrapper (full model, lite fallback, GPU with CPU fallback)
 js/config.js        every tuning number: punch positions, speed levels, timing windows, health
 js/sfx.js           synthesized sound effects (no audio files)
 js/coach.js         spoken combination calls
-models/             pose_landmarker_lite.task
+models/             pose_landmarker_full.task and pose_landmarker_lite.task
 vendor/mediapipe/   MediaPipe Tasks Vision runtime
 ```
 
 After replacing anything in `vendor/` or `models/`, bump `ASSET_CACHE` in `sw.js` so installed copies pick up the new files.
 
-Gameplay feel lives in `js/config.js`. If punches are not registering, lower `HIT.minSpeed`. If pads feel too easy to clip, lower `HIT.reach`.
+Gameplay feel lives in `js/config.js`. If punches are not registering, lower `HIT.minSpeed` or `HIT.travel`, or raise `HIT.reach`. If pads go off when you didn't mean to hit them, do the opposite. `PAD.size` sets how big pads are next to your body.
 
 ## Credits
 
-- Body tracking: [MediaPipe Tasks Vision](https://www.npmjs.com/package/@mediapipe/tasks-vision) 0.10.21 and the Pose Landmarker Lite model, both Apache 2.0. See `vendor/mediapipe/NOTICE.md`.
+- Body tracking: [MediaPipe Tasks Vision](https://www.npmjs.com/package/@mediapipe/tasks-vision) 0.10.21 and the Pose Landmarker Full and Lite models, all Apache 2.0. See `vendor/mediapipe/NOTICE.md`.
 - Fonts: Big Shoulders Display and Barlow Semi Condensed from Google Fonts (SIL Open Font License).

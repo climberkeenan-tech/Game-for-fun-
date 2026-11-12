@@ -3,7 +3,7 @@ import { Body } from './body.js';
 import { Game, COLORS, drawBody, drawGhost } from './game.js';
 import { Sfx } from './sfx.js';
 import { Coach } from './coach.js';
-import { LEVEL_BANNERS, multiplierFor } from './config.js';
+import { LEVEL_BANNERS, PUNCHES, PAD, multiplierFor } from './config.js';
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -64,6 +64,7 @@ const settings = {
   coach: store.get('coach', 'on'),
   sound: store.get('sound', 'on'),
   skeleton: store.get('skeleton', 'on'),
+  dodges: store.get('dodges', 'on'),
 };
 let best = Number(store.get('best', 0)) || 0;
 
@@ -95,7 +96,7 @@ let wakeLock = null;
 // Normalized camera coordinates to screen pixels, mirrored like a selfie view.
 const map = (x, y) => ({ x: fit.ox + (1 - x) * fit.dw, y: fit.oy + y * fit.dh });
 
-tracker
+const trackerLoading = tracker
   .load()
   .then(() => {
     trackerState = 'ready';
@@ -217,10 +218,12 @@ function cameraErrorText(err) {
   switch (err && err.name) {
     case 'NotAllowedError':
     case 'SecurityError':
-      return 'Camera access is blocked. Allow the camera for this site in your browser settings, then tap Glove up again.';
+      return `Camera access is blocked. Allow the camera for this site in your browser settings, then ${IS_DESK ? 'click' : 'tap'} Glove up again.`;
     case 'NotFoundError':
     case 'OverconstrainedError':
-      return 'No front camera was found on this device. You can still play with taps.';
+      return IS_DESK
+        ? 'No camera was found on this computer. You can still play with your mouse.'
+        : 'No front camera was found on this device. You can still play with taps.';
     case 'NotReadableError':
       return 'Another app is using the camera. Close it and try again.';
     case 'InsecureError':
@@ -263,14 +266,21 @@ function syncChips() {
 }
 
 document.querySelectorAll('.chip').forEach((btn) => {
-  btn.addEventListener('click', () => {
+  btn.addEventListener('click', (e) => {
     const key = btn.dataset.opt;
     const val = key === 'mode' ? Number(btn.dataset.val) : btn.dataset.val;
     settings[key] = val;
     store.set(key, val);
     syncChips();
+    blurAfterPointer(e);
   });
 });
+
+// A mouse or touch click leaves focus on the button, which would swallow the
+// Space and Enter shortcuts. Keyboard activation (detail 0) keeps focus.
+function blurAfterPointer(e) {
+  if (e && e.detail > 0 && e.currentTarget && e.currentTarget.blur) e.currentTarget.blur();
+}
 
 function fmt(n) {
   return Math.round(n).toLocaleString('en-US');
@@ -364,7 +374,7 @@ function setCountdown(text, isBox) {
 }
 
 function startRound() {
-  game.start({ duration: settings.mode, stance: settings.stance, tapMode, body });
+  game.start({ duration: settings.mode, stance: settings.stance, tapMode, body, dodges: settings.dodges === 'on' });
   state = 'play';
   hudCache.clear();
 }
@@ -428,7 +438,7 @@ function onLevel(idx) {
   const b = LEVEL_BANNERS[idx];
   if (!b) return;
   let [title, sub] = b;
-  if (tapMode && idx === 2) sub = 'Speed 3 · three-punch combos';
+  if ((tapMode || settings.dodges !== 'on') && idx === 2) sub = 'Speed 3 · three-punch combos';
   els.banner.querySelector('.b-title').textContent = title;
   els.banner.querySelector('.b-sub').textContent = sub;
   els.banner.hidden = false;
@@ -501,7 +511,7 @@ function showResults() {
   $('stAcc').textContent = `${Math.round(r.accuracy * 100)}%`;
   $('stPerfect').textContent = String(r.perfect);
   $('stCombo').textContent = String(r.bestCombo);
-  $('stSlips').textContent = tapMode ? 'n/a' : `${r.slips} / ${r.ducks}`;
+  $('stSlips').textContent = tapMode || settings.dodges !== 'on' ? 'Off' : `${r.slips} / ${r.ducks}`;
   $('stMissed').textContent = String(r.missed);
   $('stTime').textContent = fmtTime(r.time);
   $('stSpeed').textContent = String(r.level);
@@ -537,20 +547,29 @@ async function shareScore() {
 
 // ---------------------------------------------------------------- buttons
 
+let camRequest = 0;
+
 els.startBtn.addEventListener('click', async () => {
   sfx.unlock();
   coach.unlock();
   tapMode = false;
   els.startBtn.disabled = true;
+  const mine = ++camRequest;
   try {
     await startCamera();
   } catch (err) {
+    if (mine !== camRequest) return;
     console.error(err);
     refreshLoadStatus(cameraErrorText(err), true);
     els.startBtn.disabled = false;
     return;
   }
   els.startBtn.disabled = false;
+  // The player chose to play with taps or the mouse while the camera prompt was open.
+  if (mine !== camRequest) {
+    stopCamera();
+    return;
+  }
   requestWakeLock();
   enterSetup();
 });
@@ -558,6 +577,8 @@ els.startBtn.addEventListener('click', async () => {
 $('tapBtn').addEventListener('click', () => {
   sfx.unlock();
   coach.unlock();
+  camRequest++;
+  els.startBtn.disabled = false;
   stopCamera();
   tapMode = true;
   requestWakeLock();
@@ -582,13 +603,21 @@ $('againBtn').addEventListener('click', () => {
   else enterSetup();
 });
 $('menuBtn').addEventListener('click', goMenu);
-$('shareBtn').addEventListener('click', shareScore);
+$('shareBtn').addEventListener('click', (e) => {
+  shareScore();
+  blurAfterPointer(e);
+});
 
 els.stage.addEventListener('pointerdown', (e) => {
   if (!tapMode || state !== 'play') return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
   if (e.target.closest('button')) return;
   const r = els.stage.getBoundingClientRect();
   game.tapAt(e.clientX - r.left, e.clientY - r.top);
+});
+
+els.stage.addEventListener('contextmenu', (e) => {
+  if (state === 'play' || state === 'countdown') e.preventDefault();
 });
 
 document.addEventListener('visibilitychange', () => {
@@ -601,6 +630,11 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('keydown', (e) => {
   if (e.altKey || e.ctrlKey || e.metaKey) return;
   const key = e.key;
+  if (e.repeat) {
+    // Holding a key must not flip pause on and off or flicker full screen.
+    if (key === ' ' || key === 'Spacebar' || key === 'Enter') e.preventDefault();
+    return;
+  }
   const onButton = !!(e.target && e.target.closest && e.target.closest('button'));
   if (key === ' ' || key === 'Spacebar' || key === 'p' || key === 'P') {
     if (state === 'play' || state === 'countdown') {
@@ -647,8 +681,11 @@ function toggleFullscreen() {
   }
 }
 
+let wasFullscreen = false;
 function syncFullscreen() {
   const on = isFullscreen();
+  if (wasFullscreen && !on && (state === 'play' || state === 'countdown')) pause();
+  wasFullscreen = on;
   const menuBtn = $('fsMenuBtn');
   const hudBtn = $('fsHudBtn');
   menuBtn.hidden = !FS_ENABLED;
@@ -659,7 +696,10 @@ function syncFullscreen() {
   setTimeout(resize, 60);
 }
 
-$('fsMenuBtn').addEventListener('click', toggleFullscreen);
+$('fsMenuBtn').addEventListener('click', (e) => {
+  toggleFullscreen();
+  blurAfterPointer(e);
+});
 $('fsHudBtn').addEventListener('click', (e) => {
   toggleFullscreen();
   e.currentTarget.blur();
@@ -693,9 +733,14 @@ function syncInstall() {
   const ua = navigator.userAgent;
   const iOS = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const macSafari = !iOS && /Macintosh/.test(ua) && /Safari\//.test(ua) && !/Chrome|Chromium|CriOS|Edg|OPR|Firefox|FxiOS/.test(ua);
+  const safariVersion = Number((ua.match(/Version\/(\d+)/) || [])[1] || 0);
+  const iosVersion = Number((ua.match(/OS (\d+)_/) || [])[1] || 0);
+  const iosSafari = iOS && /Safari\//.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
   let text = '';
-  if (iOS) text = 'Keep it on your home screen: tap Share, then Add to Home Screen.';
-  else if (macSafari) text = 'Keep it in your Dock: in Safari choose File, then Add to Dock.';
+  const iosInApp = iOS && !/Safari\//.test(ua); // e.g. a link opened inside a social app
+  if (iOS && !iosInApp && (iosSafari || iosVersion >= 17)) text = 'Keep it on your home screen: tap Share, then Add to Home Screen.';
+  else if (iOS) text = 'To keep it on your home screen, open this page in Safari, then tap Share, then Add to Home Screen.';
+  else if (macSafari && safariVersion >= 17) text = 'Keep it in your Dock: in Safari choose File, then Add to Dock.';
   hint.textContent = text;
   hint.hidden = !text;
 }
@@ -710,7 +755,8 @@ window.addEventListener('appinstalled', () => {
   installed = true;
   syncInstall();
 });
-$('installBtn').addEventListener('click', async () => {
+$('installBtn').addEventListener('click', async (e) => {
+  blurAfterPointer(e);
   const promptEvent = installPrompt;
   if (!promptEvent) return;
   installPrompt = null;
@@ -725,8 +771,10 @@ $('installBtn').addEventListener('click', async () => {
 
 // Offline support: the service worker keeps the game, tracking model and fonts
 // on this device after the first visit.
+// Registered once tracking has loaded, so the worker's downloads come from the
+// browser cache instead of competing with the page's own first download.
 if ('serviceWorker' in navigator && window.isSecureContext) {
-  window.addEventListener('load', () => {
+  trackerLoading.finally(() => {
     navigator.serviceWorker.register('./sw.js').catch((err) => console.warn('Offline support unavailable', err));
   });
 }
@@ -742,6 +790,7 @@ function updateSetup(now) {
   const all = p.head && p.shoulders && p.left && p.right;
   // Leave room for hooks out to the side and for pads above the head.
   const tooClose = body.S > Math.min(view.W * 0.34, view.H * 0.36);
+  const room = framing();
   let title = 'Step into the shot';
   let hint;
   if (trackerState === 'loading') hint = 'Loading body tracking…';
@@ -749,6 +798,8 @@ function updateSetup(now) {
   else if (!body.hasPose) hint = `Stand about 6 feet from your ${DEVICE_NAME}, facing the screen.`;
   else if (!p.shoulders || !p.head) hint = 'Get your head and both shoulders in the shot.';
   else if (tooClose) hint = 'Step back a little so there is room for hooks.';
+  else if (!room.above) hint = `Tilt the ${IS_DESK ? 'screen' : 'phone'} back a little, or step back, so there is room above your head.`;
+  else if (!room.below) hint = `Tilt the ${IS_DESK ? 'screen' : 'phone'} forward a little so your chest is in the shot.`;
   else if (!p.left || !p.right) hint = 'Bring both fists up to your chin.';
   else {
     title = 'Hold your guard';
@@ -757,7 +808,7 @@ function updateSetup(now) {
   setText(els.setupTitle, 'setupTitle', title);
   setText(els.setupHint, 'setupHint', hint);
 
-  const ok = trackerState === 'ready' && all && !tooClose;
+  const ok = trackerState === 'ready' && all && !tooClose && room.above && room.below;
   if (ok) {
     if (setupOkSince === null) setupOkSince = now;
     const k = Math.min(1, (now - setupOkSince) / 1000);
@@ -767,6 +818,22 @@ function updateSetup(now) {
     setupOkSince = null;
     els.holdFill.style.width = '0%';
   }
+}
+
+// Pads sit at fixed spots around the body. If the head is near the top of the
+// screen, the high pads get squeezed down onto the low ones, so make sure the
+// jab and hook pads fit above and the uppercut pads fit below.
+function framing() {
+  if (!body.anchor || !body.S) return { above: true, below: true };
+  const S = body.S;
+  const r = Math.min(Math.max(S * PAD.size, PAD.min), Math.max(PAD.min, Math.min(view.W, view.H) * PAD.maxShare));
+  const slack = 0.15 * S;
+  const highest = body.anchor.y + Math.min(PUNCHES[1].y, PUNCHES[3].y) * S - r;
+  const lowest = body.anchor.y + PUNCHES[5].y * S + r;
+  return {
+    above: highest >= game.view.top - slack,
+    below: lowest <= view.H - game.view.bottom + slack,
+  };
 }
 
 // Pause the round while the player is out of the shot.
@@ -849,7 +916,7 @@ function frame(now) {
   if (DEBUG) {
     fpsFrames++;
     if (now - fpsT >= 1000) {
-      fpsText = `${tracker.delegate || '-'} · draw ${fpsFrames} fps · pose ${fpsPose} fps · ${els.video.videoWidth}x${els.video.videoHeight} · S ${Math.round(body.S)}`;
+      fpsText = `${tracker.delegate || '-'} ${tracker.model} ${tracker.avgMs.toFixed(0)} ms · draw ${fpsFrames} fps · pose ${fpsPose} fps · ${els.video.videoWidth}x${els.video.videoHeight} · S ${Math.round(body.S)}`;
       fpsFrames = 0;
       fpsPose = 0;
       fpsT = now;

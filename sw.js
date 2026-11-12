@@ -2,6 +2,8 @@
 //
 // Game code and pages: network first, so changes show up as soon as you are
 // online, with the cached copy used when offline or when the network stalls.
+// A page that loaded from the cache gets the rest of its files from the cache
+// too, so one launch never mixes old and new code.
 // Tracking runtime, pose model and fonts: cache first. They never change at the
 // same URL, so bump ASSET_CACHE if anything in vendor/ or models/ is replaced.
 
@@ -29,22 +31,25 @@ const SHELL = [
   'icons/apple-touch-icon.png',
 ].map(at);
 
-// The SIMD build covers every current browser. The fallback build is cached
-// on first use if a device ever asks for it.
+// The SIMD build covers every current browser, and the full pose model is the
+// one the game starts with. The fallback build and the lite model are cached on
+// first use if a device ever needs them.
 const ASSETS = [
   'vendor/mediapipe/vision_bundle.mjs',
   'vendor/mediapipe/wasm/vision_wasm_internal.js',
   'vendor/mediapipe/wasm/vision_wasm_internal.wasm',
-  'models/pose_landmarker_lite.task',
+  'models/pose_landmarker_full.task',
 ].map(at);
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
+      // An update (an older Mitt Rush worker already cached the runtime) must get
+      // every file, or it fails and the working version stays in charge. A first
+      // install is best effort: anything missed is cached when the game loads it.
+      const update = (await caches.keys()).some((k) => k.startsWith('mittrush-assets-'));
       const shell = await caches.open(SHELL_CACHE);
       await shell.addAll(SHELL);
-      // Best effort: a failed large download must not stop the worker installing.
-      // Anything missed is cached the next time the game loads it.
       const assets = await caches.open(ASSET_CACHE);
       await Promise.all(
         ASSETS.map(async (url) => {
@@ -52,7 +57,7 @@ self.addEventListener('install', (event) => {
           try {
             await assets.add(url);
           } catch (e) {
-            /* retried at runtime */
+            if (update) throw e;
           }
         }),
       );
@@ -107,6 +112,9 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+// Pages (window ids) that were served from the cache during this worker's life.
+const fromCache = new Set();
+
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
@@ -119,9 +127,15 @@ self.addEventListener('fetch', (event) => {
       event.respondWith(cacheFirst(event, ASSET_CACHE, url.origin + url.pathname));
       return;
     }
-    // Every page in scope is the same single-page app, whatever its query string.
-    const key = req.mode === 'navigate' ? at('./') : url.origin + url.pathname;
-    event.respondWith(networkFirst(event, key));
+    if (req.mode === 'navigate') {
+      // Every page in scope is the same single-page app, whatever its query string.
+      const id = event.resultingClientId;
+      event.respondWith(networkFirst(event, at('./'), NETWORK_TIMEOUT, () => id && fromCache.add(id)));
+      return;
+    }
+    const key = url.origin + url.pathname;
+    if (fromCache.has(event.clientId)) event.respondWith(cacheElseNetwork(event, key));
+    else event.respondWith(networkFirst(event, key, 0));
     return;
   }
 
@@ -143,7 +157,14 @@ async function cacheFirst(event, cacheName, key) {
   return res;
 }
 
-function networkFirst(event, key) {
+async function cacheElseNetwork(event, key) {
+  const cache = await caches.open(SHELL_CACHE);
+  return (await cache.match(key, { ignoreSearch: true })) || fetch(event.request);
+}
+
+// timeout 0 waits for the network as long as it takes and only falls back to the
+// cache when the request fails outright.
+function networkFirst(event, key, timeout, onCached) {
   let storing = Promise.resolve();
   const network = fetch(event.request).then((res) => {
     if (res.ok && res.type === 'basic') {
@@ -161,15 +182,23 @@ function networkFirst(event, key) {
 
   return (async () => {
     let timer;
-    const timeout = new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error('timeout')), NETWORK_TIMEOUT);
-    });
+    const racers = [network];
+    if (timeout) {
+      racers.push(
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error('timeout')), timeout);
+        }),
+      );
+    }
     try {
-      return await Promise.race([network, timeout]);
+      return await Promise.race(racers);
     } catch (err) {
       const cache = await caches.open(SHELL_CACHE);
       const hit = await cache.match(key, { ignoreSearch: true });
-      if (hit) return hit;
+      if (hit) {
+        if (onCached) onCached();
+        return hit;
+      }
       return network; // nothing cached: keep waiting for the network (or its error)
     } finally {
       clearTimeout(timer);

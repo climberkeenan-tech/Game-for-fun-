@@ -1,5 +1,5 @@
 import {
-  PUNCHES, LEVELS, COMBOS, SPOKEN, HIT, POINTS, HEALTH, DUCK, multiplierFor,
+  PUNCHES, PAD, LEVELS, COMBOS, SPOKEN, HIT, POINTS, HEALTH, DUCK, multiplierFor,
 } from './config.js';
 
 export const COLORS = {
@@ -12,6 +12,8 @@ export const COLORS = {
   gold: '#ffcf4a',
   hazard: '#ffb02e',
   miss: '#9aa0aa',
+  mitt: '#d9822b', // the coach's glove when it comes back at you
+  mittDark: '#6e360b',
 };
 
 export const FONT_DISPLAY = '"Big Shoulders Display", Impact, "Arial Narrow Bold", sans-serif';
@@ -64,12 +66,12 @@ export class Game {
     this.fxT = 0;
     this.shake = 0;
     this.flash = 0;
-    this.hazard = null;
   }
 
-  start({ duration, stance, tapMode, body }) {
+  start({ duration, stance, tapMode, body, dodges = true }) {
     this.duration = duration * 1000; // 0 means survival
     this.tapMode = tapMode;
+    this.dodges = dodges;
     this.body = body;
     this.leadHand = stance === 'southpaw' ? 'R' : 'L';
     this.rearHand = this.leadHand === 'L' ? 'R' : 'L';
@@ -94,6 +96,7 @@ export class Game {
     this.flash = 0;
     this.handSeen = { L: body ? body.hands.L.seq : 0, R: body ? body.hands.R.seq : 0 };
     this.handCooldown = { L: -1e9, R: -1e9 };
+    this.handUsed = { L: -Infinity, R: -Infinity };
     this.baseline = !tapMode && body && body.nose ? body.nose.y : null;
     this.lastDuckEnd = -1e9;
     this.padSeq = 0;
@@ -114,8 +117,8 @@ export class Game {
   padPos(p, F) {
     const def = PUNCHES[p.n];
     const side = p.hand === 'L' ? -1 : 1; // the camera image is mirrored, so your left is screen-left
-    const r = clamp(F.S * 0.4, 26, 90);
     const { W, H, top, bottom } = this.view;
+    const r = clamp(F.S * PAD.size, PAD.min, Math.max(PAD.min, Math.min(W, H) * PAD.maxShare));
     const x = clamp(F.ax + side * (def.x + p.jx) * F.S, r + 6, W - r - 6);
     const y = clamp(F.ay + (def.y + p.jy) * F.S, top + r, Math.max(top + r, H - bottom - r));
     return { x, y, r };
@@ -123,6 +126,20 @@ export class Game {
 
   get level() {
     return LEVELS[this.levelIdx];
+  }
+
+  // A pad takes hits from the moment it has finished popping in.
+  isOpen(p, t) {
+    return t >= p.hitT - p.approach * (1 - HIT.open);
+  }
+
+  // Combos go in order: a pad waits while an earlier pad for the same hand is
+  // still up, so a hook swinging out can't clip the jab pad that comes next.
+  queued(p) {
+    for (const q of this.pads) {
+      if (q !== p && q.state === 'live' && q.hand === p.hand && q.hitT < p.hitT) return true;
+    }
+    return false;
   }
 
   // Pop-up text size: phone-sized on phones, bigger on laptop and desktop screens.
@@ -137,14 +154,27 @@ export class Game {
     const lookahead = L.approach + 60;
     let guard = 0;
     while (this.t >= this.nextSetT - lookahead && guard++ < 4) {
-      if (!this.tapMode && L.duck > 0 && !this.lastWasDuck && this.t > 3000 && Math.random() < L.duck) {
+      if (this.dodges && !this.tapMode && L.duck > 0 && !this.lastWasDuck && this.t > 3000 && Math.random() < L.duck) {
+        // The coach throws one back: a hook to roll under or a straight to slip.
         const warn = clamp(L.approach + 150, 1000, 1500);
         const hitT = Math.max(this.nextSetT, this.t + warn);
-        this.ducks.push({ hitT, warn, side: Math.random() < 0.5 ? -1 : 1, state: 'live', doneT: 0 });
+        const F = this.frameOf();
+        const nose = this.body && this.body.nose;
+        const kind = Math.random() < 0.55 ? 'hook' : 'straight';
+        this.ducks.push({
+          kind,
+          hitT,
+          warn: hitT - this.t,
+          side: Math.random() < 0.5 ? -1 : 1,
+          tx: nose ? nose.x : F.ax,
+          ty: this.baseline ?? (nose ? nose.y : F.ay - 0.7 * F.S),
+          state: 'live',
+          doneT: 0,
+        });
         this.nextSetT = hitT + DUCK.recover + L.gap * 0.5;
         this.lastWasDuck = true;
-        this.events.onCall?.([{ text: 'Duck', hand: null }]);
-        this.coach.say('duck', 1.2);
+        this.events.onCall?.([{ text: kind === 'hook' ? 'Duck' : 'Slip', hand: null }]);
+        this.coach.say(kind === 'hook' ? 'duck' : 'slip', 1.2);
         this.sfx.warn();
         continue;
       }
@@ -209,7 +239,7 @@ export class Game {
     this.updateBaseline();
 
     this.pads = this.pads.filter((p) => p.state === 'live' || this.fxT - p.doneT < 700);
-    this.ducks = this.ducks.filter((d) => d.state === 'live' || this.fxT - d.doneT < 700);
+    this.ducks = this.ducks.filter((d) => d.state === 'live' || this.fxT - d.doneT < 600);
 
     this.updateFx(dt);
 
@@ -253,27 +283,71 @@ export class Game {
 
   // ---------------------------------------------------------------- hits
 
+  // Checks the fist's recent movement against every open pad. A pad is hit when
+  // the fist moved into it (uppercut pads: up through it) with some speed. The
+  // hit is timed at the fist's closest point, so it waits one camera frame for
+  // the fist to stop closing in unless the fist is already deep in the pad.
   tryHand(key, h) {
-    const F = this.frameOf();
-    const speed = h.speed() / F.S;
-    if (speed < HIT.minSpeed) return;
     if (this.t - this.handCooldown[key] < HIT.cooldown) return;
-    const a = h.prev && h.cur.t - h.prev.t < 200 ? h.prev : h.cur;
-    const b = h.cur;
-    const judgeT = this.t - HIT.inputLag;
-    const upward = -h.vy / F.S;
+    const F = this.frameOf();
+    const path = h.recent(HIT.path, this.handUsed[key]);
+    if (path.length < 2) return;
+    let peak = 0;
+    for (const s of path) peak = Math.max(peak, s.sp || 0);
+    if (peak / F.S < HIT.minSpeed) return;
+    const newest = path[path.length - 1];
     let best = null;
     for (const p of this.pads) {
-      if (p.state !== 'live' || judgeT < p.hitT - HIT.early) continue;
-      if (p.kind === 'upper' && upward < HIT.upperSpeed) continue;
+      if (p.state !== 'live' || this.queued(p)) continue;
       const pos = this.padPos(p, F);
-      if (segDist(pos.x, pos.y, a.x, a.y, b.x, b.y) > pos.r * HIT.reach) continue;
+      const reach = pos.r * HIT.reach + HIT.fist * F.S;
+      // Closest the fist came to the pad while the pad was open.
+      let dMin = Infinity;
+      let at = -1;
+      let judgeT = 0;
+      for (let i = 1; i < path.length; i++) {
+        const t = this.t - HIT.inputLag - (newest.t - path[i].t);
+        if (!this.isOpen(p, t) || t > p.hitT + HIT.late) continue;
+        const a = path[i - 1];
+        const b = path[i];
+        const d = segDist(pos.x, pos.y, a.x, a.y, b.x, b.y);
+        if (d < dMin) {
+          dMin = d;
+          at = i;
+          judgeT = t;
+        }
+      }
+      if (at < 0 || dMin > reach) continue;
+      const still = at === path.length - 1 && Math.hypot(newest.x - pos.x, newest.y - pos.y) > pos.r * HIT.deep;
+      if (still) continue; // still closing in: decide on the next frame
+      if (p.kind === 'upper') {
+        let low = -Infinity;
+        for (let i = 0; i < at; i++) low = Math.max(low, path[i].y);
+        let high = Infinity;
+        for (let i = at - 1; i < path.length; i++) high = Math.min(high, path[i].y);
+        if ((low - high) / F.S < HIT.upperRise) continue;
+      } else {
+        // How far out the fist was before it closed in (it may have pulled back
+        // from a previous pad first).
+        let dFar = -1;
+        let far = path[0];
+        for (let i = 0; i < at; i++) {
+          const d = Math.hypot(path[i].x - pos.x, path[i].y - pos.y);
+          if (d > dFar) {
+            dFar = d;
+            far = path[i];
+          }
+        }
+        const moved = Math.hypot(path[at].x - far.x, path[at].y - far.y) / F.S;
+        if ((dFar - dMin) / F.S < HIT.approach || moved < HIT.travel) continue;
+      }
       const rank = (p.hand === key ? 0 : 1e7) + p.hitT; // right hand first, then earliest pad
-      if (!best || rank < best.rank) best = { p, rank, pos };
+      if (!best || rank < best.rank) best = { p, rank, pos, judgeT, sampleT: path[at].t };
     }
     if (best) {
       this.handCooldown[key] = this.t;
-      this.onHit(best.p, key, judgeT, best.pos);
+      this.handUsed[key] = best.sampleT;
+      this.onHit(best.p, key, best.judgeT, best.pos);
     }
   }
 
@@ -282,7 +356,7 @@ export class Game {
     const F = this.frameOf();
     let best = null;
     for (const p of this.pads) {
-      if (p.state !== 'live' || this.t < p.hitT - HIT.early) continue;
+      if (p.state !== 'live' || !this.isOpen(p, this.t) || this.queued(p)) continue;
       const pos = this.padPos(p, F);
       if (Math.hypot(x - pos.x, y - pos.y) > pos.r * 1.35) continue;
       if (!best || p.hitT < best.p.hitT) best = { p, pos };
@@ -328,27 +402,26 @@ export class Game {
     this.sfx.miss();
   }
 
-  duckGeometry(F) {
-    const base = this.baseline ?? F.ay - 0.6 * F.S;
-    return {
-      base,
-      barY: base - 0.05 * F.S,
-      thick: Math.max(22, 0.3 * F.S),
-      line: base + DUCK.drop * F.S, // the nose has to get below this
-    };
+  // Is the head out of the way of an incoming glove? A hook has to be rolled
+  // under. A straight can be slipped to either side or ducked.
+  dodged(d, F) {
+    if (this.baseline == null) return true;
+    const nose = this.body && this.body.nose;
+    if (!nose) return false;
+    const under = nose.y > d.ty + DUCK.drop * F.S;
+    if (d.kind === 'hook') return under;
+    return under || Math.abs(nose.x - d.tx) > DUCK.slip * F.S;
   }
 
   resolveDuck(d) {
     const F = this.frameOf();
-    const g = this.duckGeometry(F);
-    const nose = this.body && this.body.nose;
-    const ok = this.baseline == null || (nose && nose.y > g.line);
+    const ok = this.dodged(d, F);
     d.state = ok ? 'slipped' : 'caught';
     d.doneT = this.fxT;
     this.stats.ducks++;
     this.lastDuckEnd = this.t;
-    const x = this.view.W / 2;
-    const y = g.barY - g.thick / 2 - 40;
+    const x = clamp(d.tx, 80, this.view.W - 80);
+    const y = d.ty - F.S * 0.9;
     if (ok) {
       this.stats.slips++;
       const pts = Math.round(POINTS.SLIP * multiplierFor(this.combo));
@@ -356,7 +429,7 @@ export class Game {
       this.combo++;
       this.bestCombo = Math.max(this.bestCombo, this.combo);
       this.health = Math.min(HEALTH.start, this.health + HEALTH.heal.SLIP);
-      this.popText('Slipped', x, y, COLORS.chalk, `+${pts}`);
+      this.popText(d.kind === 'hook' ? 'Rolled under' : 'Slipped', x, y, COLORS.chalk, `+${pts}`);
       this.sfx.slip();
       this.checkLevel();
     } else {
@@ -364,6 +437,7 @@ export class Game {
       this.health -= HEALTH.caught;
       this.flash = 1;
       this.shake = 16;
+      this.burst(d.tx, d.ty, COLORS.mitt, 16, F.S * 0.3);
       this.popText('Caught', x, y, COLORS.R);
       this.sfx.caught();
     }
@@ -434,6 +508,8 @@ export class Game {
   }
 
   popText(text, x, y, color, sub) {
+    // Keep it clear of the top bar; it rises a little as it fades.
+    y = Math.max(this.view.top + this.textBase * 1.6, y);
     this.texts.push({ text: text.toUpperCase(), sub, x, y, color, t0: this.fxT });
   }
 
@@ -458,69 +534,84 @@ export class Game {
       const pos = this.padPos(p, F);
       const toHit = p.hitT - this.t;
       const life = clamp(1 - toHit / p.approach, 0, 1);
-      const appear = clamp(life / 0.18, 0, 1);
+      const appear = clamp(life / HIT.open, 0, 1);
       const r = pos.r * easeOutBack(appear);
-      const lagged = this.t - (this.tapMode ? 0 : HIT.inputLag);
-      const open = lagged >= p.hitT - HIT.early;
+      const open = this.isOpen(p, this.t - (this.tapMode ? 0 : HIT.inputLag));
 
       // Timing ring closes onto the pad at the ideal moment.
       if (toHit > -HIT.late) {
         const k = Math.max(0, toHit) / p.approach;
-        const ar = pos.r * (1 + 1.6 * k);
-        ctx.globalAlpha = (0.3 + 0.7 * appear) * (toHit < 0 ? 0.5 : 1);
-        ctx.lineWidth = Math.max(2.5, pos.r * 0.08);
+        const ar = pos.r * (1 + 1.4 * k);
+        ctx.globalAlpha = (0.35 + 0.65 * appear) * (toHit < 0 ? 0.5 : 1);
+        ctx.lineWidth = Math.max(3, pos.r * 0.08);
         ctx.strokeStyle = Math.abs(toHit) <= HIT.perfect ? COLORS.gold : COLORS.chalk;
         circle(ctx, pos.x, pos.y, ar);
         ctx.stroke();
       }
 
-      ctx.globalAlpha = open ? 1 : 0.55 + 0.3 * appear;
+      // Rim in the hand's color, dark face, then the punch number filling the face.
+      ctx.globalAlpha = open ? 1 : 0.7 + 0.3 * appear;
       if (open) {
         ctx.shadowColor = color;
-        ctx.shadowBlur = pos.r * 0.6;
+        ctx.shadowBlur = pos.r * 0.5;
       }
       ctx.fillStyle = color;
       circle(ctx, pos.x, pos.y, r);
       ctx.fill();
       ctx.shadowBlur = 0;
       ctx.fillStyle = dark;
-      circle(ctx, pos.x, pos.y, r * 0.8);
+      circle(ctx, pos.x, pos.y, r * 0.78);
       ctx.fill();
-      ctx.strokeStyle = COLORS.chalk;
-      ctx.lineWidth = Math.max(2, r * 0.07);
-      circle(ctx, pos.x, pos.y, r * 0.5);
+      ctx.strokeStyle = COLORS.ink;
+      ctx.lineWidth = Math.max(2, r * 0.05);
+      circle(ctx, pos.x, pos.y, r * 0.78);
       ctx.stroke();
 
-      // Punch number, the way a trainer calls it.
-      ctx.fillStyle = COLORS.chalk;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.font = `900 ${Math.round(r * 0.78)}px ${FONT_DISPLAY}`;
-      ctx.fillText(String(p.n), pos.x, pos.y + r * 0.04);
+      if (r > 4) {
+        const label = String(p.n);
+        ctx.font = `900 ${Math.round(r * 1.1)}px ${FONT_DISPLAY}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'alphabetic';
+        const m = ctx.measureText(label);
+        const asc = m.actualBoundingBoxAscent || r * 0.75;
+        const desc = m.actualBoundingBoxDescent || 0;
+        const by = pos.y + (asc - desc) / 2;
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = Math.max(3, r * 0.1);
+        ctx.strokeStyle = COLORS.ink;
+        ctx.strokeText(label, pos.x, by);
+        ctx.fillStyle = COLORS.chalk;
+        ctx.fillText(label, pos.x, by);
+      }
 
       if (p.kind === 'upper') {
-        // Arrow says "drive upward through it".
-        ctx.fillStyle = COLORS.chalk;
+        // Arrow on the rim says "drive upward through it".
+        ctx.fillStyle = COLORS.ink;
         ctx.beginPath();
-        ctx.moveTo(pos.x, pos.y - r * 0.98);
-        ctx.lineTo(pos.x - r * 0.2, pos.y - r * 0.68);
-        ctx.lineTo(pos.x + r * 0.2, pos.y - r * 0.68);
+        ctx.moveTo(pos.x, pos.y - r * 1.02);
+        ctx.lineTo(pos.x - r * 0.26, pos.y - r * 0.66);
+        ctx.lineTo(pos.x + r * 0.26, pos.y - r * 0.66);
         ctx.closePath();
         ctx.fill();
       }
 
-      // Tag under the pad.
+      // Punch name under the pad: dark type on a tab in the hand's color.
       if (appear > 0.6) {
-        const fs = Math.max(11, Math.round(pos.r * 0.3));
+        const fs = Math.max(15, Math.round(pos.r * 0.34));
         ctx.font = `700 ${fs}px ${FONT_BODY}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
         const label = p.tag.toUpperCase();
-        const w = ctx.measureText(label).width + fs * 0.9;
-        const ty = pos.y + r + fs * 0.9;
-        ctx.globalAlpha *= 0.95;
-        ctx.fillStyle = COLORS.ink;
-        ctx.fillRect(pos.x - w / 2, ty - fs * 0.62, w, fs * 1.24);
+        const w = ctx.measureText(label).width + fs * 1.1;
+        const h = fs * 1.35;
+        const ty = pos.y + r + h * 0.5 + Math.max(4, pos.r * 0.08);
         ctx.fillStyle = color;
-        ctx.fillText(label, pos.x, ty + 1);
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(pos.x - w / 2, ty - h / 2, w, h, h * 0.3);
+        else ctx.rect(pos.x - w / 2, ty - h / 2, w, h);
+        ctx.fill();
+        ctx.fillStyle = COLORS.ink;
+        ctx.fillText(label, pos.x, ty + fs * 0.04);
       }
     } else if (p.state === 'hit') {
       const k = clamp((this.fxT - p.doneT) / 220, 0, 1);
@@ -547,90 +638,87 @@ export class Game {
     ctx.restore();
   }
 
-  hazardPattern(ctx) {
-    if (this.hazard) return this.hazard;
-    const c = document.createElement('canvas');
-    c.width = 28;
-    c.height = 28;
-    const g = c.getContext('2d');
-    g.fillStyle = COLORS.hazard;
-    g.fillRect(0, 0, 28, 28);
-    g.fillStyle = COLORS.ink;
-    for (let i = -28; i < 56; i += 14) {
-      g.beginPath();
-      g.moveTo(i, 0);
-      g.lineTo(i + 7, 0);
-      g.lineTo(i + 7 - 28, 28);
-      g.lineTo(i - 28, 28);
-      g.closePath();
-      g.fill();
+  // Where the coach's glove is k of the way through its throw (1 = impact).
+  // The first half is the wind-up, so you can see it coming; then it fires.
+  glovePose(d, F, k) {
+    const S = F.S;
+    const windup = 0.5;
+    const fire = (k - windup) / (1 - windup);
+    if (d.kind === 'hook') {
+      // Swings in flat from the side at head height.
+      const sx = d.tx + d.side * 2.3 * S;
+      const sy = d.ty - 0.25 * S;
+      const u = k < windup ? -0.12 * Math.sin(Math.PI * (k / windup)) - 0.25 * (1 - easeOut(k / windup)) : Math.pow(fire, 1.6);
+      const x = sx + (d.tx - sx) * u;
+      const y = sy + (d.ty - sy) * u - 0.18 * S * Math.sin(Math.PI * clamp(u, 0, 1));
+      return { x, y, size: 0.42 * S, angle: d.side > 0 ? Math.PI : 0 };
     }
-    this.hazard = ctx.createPattern(c, 'repeat');
-    return this.hazard;
+    // A straight comes from out in front, angled at your face, growing as it closes in.
+    const sx = d.tx + d.side * 1.25 * S;
+    const sy = d.ty - 0.6 * S;
+    const u = k < windup ? 0.05 * Math.sin(Math.PI * (k / windup)) : Math.pow(fire, 2);
+    const x = sx + (d.tx - sx) * u;
+    const y = sy + (d.ty - sy) * u;
+    return { x, y, size: (0.26 + 0.24 * u) * S, angle: Math.atan2(d.ty - sy, d.tx - sx) };
   }
 
   drawDuck(ctx, d, F) {
-    const { W } = this.view;
-    const g = this.duckGeometry(F);
     let k;
     let alpha = 1;
     if (d.state === 'live') {
       k = clamp(1 - (d.hitT - this.t) / d.warn, 0, 1);
     } else {
-      const e = clamp((this.fxT - d.doneT) / 350, 0, 1);
-      k = 1 + e;
+      const e = clamp((this.fxT - d.doneT) / 320, 0, 1);
       alpha = 1 - e;
+      k = 1;
+      if (d.state === 'slipped' || d.state === 'gone') k = 1 + e * 0.6; // follows through past you
     }
-    // The bar swings in from one side and is fully across at the moment of impact.
-    const off = k <= 1 ? (1 - easeOut(k)) * W * d.side : -(k - 1) * W * d.side;
-    ctx.save();
-    ctx.globalAlpha = alpha * (d.state === 'live' ? 0.92 : 1);
-    ctx.translate(off, 0);
-    ctx.fillStyle = this.hazardPattern(ctx);
-    ctx.fillRect(0, g.barY - g.thick / 2, W, g.thick);
-    ctx.fillStyle = COLORS.ink;
-    ctx.fillRect(0, g.barY - g.thick / 2 - 3, W, 3);
-    ctx.fillRect(0, g.barY + g.thick / 2, W, 3);
-    ctx.restore();
-
-    if (d.state !== 'live') return;
-    ctx.save();
-    // Target line: get your nose below it before the bar lands.
-    ctx.setLineDash([10, 8]);
-    ctx.lineWidth = 2.5;
-    ctx.strokeStyle = COLORS.chalk;
-    ctx.globalAlpha = 0.8;
-    ctx.beginPath();
-    ctx.moveTo(12, g.line);
-    ctx.lineTo(W - 12, g.line);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.font = `700 ${Math.round(Math.max(13, this.textBase * 0.45))}px ${FONT_BODY}`;
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'bottom';
-    ctx.fillStyle = COLORS.chalk;
-    ctx.fillText('HEAD BELOW THIS LINE', W - 14, g.line - 5);
-
-    const nose = this.body && this.body.nose;
-    if (nose) {
-      const below = nose.y > g.line;
-      ctx.globalAlpha = 1;
-      ctx.lineWidth = 4;
-      ctx.strokeStyle = below ? COLORS.chalk : COLORS.R;
-      circle(ctx, nose.x, nose.y, Math.max(14, F.S * 0.18));
-      ctx.stroke();
+    let pose;
+    if (k <= 1) pose = this.glovePose(d, F, k);
+    else if (d.kind === 'hook') {
+      const end = this.glovePose(d, F, 1);
+      pose = { ...end, x: end.x - d.side * (k - 1) * 3 * F.S };
+    } else {
+      const end = this.glovePose(d, F, 1);
+      const dist = (k - 1) * 2.5 * F.S;
+      pose = { ...end, x: end.x + Math.cos(end.angle) * dist, y: end.y + Math.sin(end.angle) * dist };
     }
 
-    const pulse = 0.75 + 0.25 * Math.sin(this.t / 60);
-    ctx.globalAlpha = pulse;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'bottom';
-    ctx.font = `900 ${Math.round(Math.max(40, F.S * 0.55))}px ${FONT_DISPLAY}`;
-    ctx.lineWidth = 6;
-    ctx.strokeStyle = COLORS.ink;
-    ctx.strokeText('DUCK', W / 2, g.barY - g.thick / 2 - 8);
-    ctx.fillStyle = COLORS.hazard;
-    ctx.fillText('DUCK', W / 2, g.barY - g.thick / 2 - 8);
+    // Head marker: red while your head is in the line of the punch.
+    if (d.state === 'live' && k > 0.25) {
+      const nose = this.body && this.body.nose;
+      if (nose) {
+        const safe = this.dodged(d, F);
+        ctx.save();
+        ctx.globalAlpha = 0.9;
+        ctx.lineWidth = Math.max(3, F.S * 0.025);
+        ctx.strokeStyle = safe ? COLORS.chalk : COLORS.R;
+        circle(ctx, nose.x, nose.y, Math.max(16, F.S * 0.3));
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // Motion streaks behind the glove once it fires.
+    if (d.state === 'live' && k > 0.55) {
+      ctx.save();
+      ctx.globalAlpha = 0.35 * alpha;
+      ctx.strokeStyle = COLORS.mitt;
+      ctx.lineCap = 'round';
+      for (let i = 1; i <= 3; i++) {
+        const back = this.glovePose(d, F, Math.max(0.5, k - i * 0.05));
+        ctx.lineWidth = pose.size * (0.5 - i * 0.1);
+        ctx.beginPath();
+        ctx.moveTo(back.x, back.y);
+        ctx.lineTo(pose.x, pose.y);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    drawGlove(ctx, pose);
     ctx.restore();
   }
 
@@ -684,6 +772,65 @@ export class Game {
     }
     ctx.restore();
   }
+}
+
+// ---------------------------------------------------------------- coach's glove
+
+// A boxing glove seen from the side, knuckles leading along `angle`, thumb kept
+// on the underside whichever way it travels.
+function drawGlove(ctx, { x, y, size: s, angle }) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  if (Math.cos(angle) < 0) ctx.scale(1, -1);
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = Math.max(2, s * 0.05);
+  ctx.strokeStyle = COLORS.ink;
+  ctx.shadowColor = 'rgba(0,0,0,0.5)';
+  ctx.shadowBlur = s * 0.4;
+  ctx.shadowOffsetY = s * 0.1;
+
+  // Cuff trailing behind.
+  ctx.fillStyle = '#26282d';
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(-s * 1.5, -s * 0.48, s * 0.82, s * 0.96, s * 0.16);
+  else ctx.rect(-s * 1.5, -s * 0.48, s * 0.82, s * 0.96);
+  ctx.fill();
+  ctx.shadowColor = 'transparent';
+  ctx.stroke();
+  ctx.fillStyle = COLORS.mitt;
+  ctx.fillRect(-s * 1.12, -s * 0.48, s * 0.12, s * 0.96);
+
+  // Padded fist, lit from above.
+  const g = ctx.createRadialGradient(-s * 0.15, -s * 0.4, s * 0.1, 0, 0, s * 1.05);
+  g.addColorStop(0, '#f6b866');
+  g.addColorStop(0.55, COLORS.mitt);
+  g.addColorStop(1, COLORS.mittDark);
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.ellipse(0, -s * 0.04, s, s * 0.74, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // Knuckle crease near the front.
+  ctx.strokeStyle = 'rgba(70,35,8,0.55)';
+  ctx.lineWidth = Math.max(1.5, s * 0.04);
+  ctx.beginPath();
+  ctx.ellipse(s * 0.38, -s * 0.04, s * 0.3, s * 0.56, 0, -Math.PI * 0.42, Math.PI * 0.42);
+  ctx.stroke();
+
+  // Thumb tucked along the underside.
+  const tg = ctx.createLinearGradient(0, s * 0.3, 0, s * 0.72);
+  tg.addColorStop(0, COLORS.mitt);
+  tg.addColorStop(1, COLORS.mittDark);
+  ctx.fillStyle = tg;
+  ctx.strokeStyle = COLORS.ink;
+  ctx.lineWidth = Math.max(2, s * 0.05);
+  ctx.beginPath();
+  ctx.ellipse(-s * 0.02, s * 0.5, s * 0.55, s * 0.2, 0.06, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
 }
 
 // ---------------------------------------------------------------- body overlay
