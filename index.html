@@ -36,6 +36,7 @@
       <div class="tape score-tape">
         <span class="lbl">Score</span>
         <span id="hudScore" class="num">0</span>
+        <span id="hudBest" class="best-line" hidden></span>
       </div>
       <div class="clock">
         <span id="hudClockLbl" class="lbl">Round</span>
@@ -120,6 +121,10 @@
       </div>
 
       <div class="cta">
+        <div class="target">
+          <p class="target-line"><span id="targetLbl">Best to beat</span> <b id="bestScore">0</b></p>
+          <button id="boardBtn" class="btn-ghost" type="button">Leaderboard</button>
+        </div>
         <button id="startBtn" class="btn-primary" type="button">Glove up</button>
         <p id="loadStatus" class="status" role="status">Loading body tracking…</p>
         <button id="tapBtn" class="btn-link" type="button"><span class="only-touch">No camera? Play with taps</span><span class="only-desk">No camera? Play with your mouse</span></button>
@@ -132,7 +137,6 @@
         <p id="installHint" class="hint" hidden></p>
         <p class="hint only-desk">Keys: Space pauses and resumes. F toggles full screen.</p>
       </div>
-      <p class="best">Personal best <b id="bestScore">0</b></p>
     </div>
   </section>
 
@@ -190,16 +194,31 @@
     <div class="results-inner">
       <article class="scorecard" aria-labelledby="scResult">
         <header class="sc-head"><span>Official scorecard</span><span id="scDate"></span></header>
-        <h2 id="scResult" class="sc-result">Final bell</h2>
-        <p id="scSub" class="sc-sub">You went the distance.</p>
+        <div class="sc-top">
+          <div>
+            <h2 id="scResult" class="sc-result">Final bell</h2>
+            <p id="scSub" class="sc-sub">You went the distance.</p>
+            <p id="scTitle" class="sc-title">Contender</p>
+          </div>
+          <div class="grade-stamp" role="img" id="scGrade" aria-label="Grade">
+            <span id="scLetter" class="letter">B</span>
+            <span id="scRating" class="rating">80 / 100</span>
+          </div>
+        </div>
         <div class="sc-score-row">
           <div>
             <p class="sc-label">Final score</p>
             <p id="scScore" class="sc-score">0</p>
           </div>
-          <div id="scVerdict" class="stamp">Contender</div>
+          <div class="sc-target">
+            <p id="scBest" class="sc-best" hidden>New personal best</p>
+            <p id="scToBeat" class="sc-tobeat"></p>
+          </div>
         </div>
-        <p id="scBest" class="sc-best" hidden>New personal best</p>
+        <div id="scBoard" class="sc-board">
+          <p id="scPlace" class="sc-place"></p>
+          <label id="scNameRow" class="sc-name" hidden>Name on the board <input id="scName" type="text" maxlength="14" autocomplete="nickname" enterkeyhint="done" spellcheck="false"></label>
+        </div>
         <dl class="sc-stats">
           <div><dt>Punches landed</dt><dd id="stLanded">0 / 0</dd></div>
           <div><dt>Accuracy</dt><dd id="stAcc">0%</dd></div>
@@ -210,15 +229,45 @@
           <div><dt>Time</dt><dd id="stTime">0:00</dd></div>
           <div><dt>Top speed</dt><dd id="stSpeed">1</dd></div>
         </dl>
+        <section class="corner" aria-labelledby="cornerTitle">
+          <h3 id="cornerTitle">From your corner</h3>
+          <ul id="cornerGood" class="corner-list good"></ul>
+          <ul id="cornerWork" class="corner-list work"></ul>
+        </section>
       </article>
       <div class="res-actions">
         <button id="againBtn" class="btn-primary" type="button">Run it back</button>
         <div class="row">
-          <button id="shareBtn" class="btn-secondary" type="button">Share score</button>
+          <button id="resBoardBtn" class="btn-secondary" type="button">Leaderboard</button>
+          <button id="shareBtn" class="btn-secondary" type="button">Share</button>
           <button id="menuBtn" class="btn-secondary" type="button">Menu</button>
         </div>
         <p id="shareMsg" class="status" role="status" hidden></p>
       </div>
+    </div>
+  </section>
+
+  <section id="board" class="screen board" hidden>
+    <div class="board-inner">
+      <header class="board-head">
+        <p class="eyebrow">Kept on this device</p>
+        <h2>Leaderboard</h2>
+      </header>
+      <div class="board-tabs">
+        <div class="chips" role="group" aria-label="Round length">
+          <button class="chip" type="button" data-board-mode="60">1 min</button>
+          <button class="chip" type="button" data-board-mode="180">3 min</button>
+          <button class="chip" type="button" data-board-mode="0">Survival</button>
+        </div>
+        <div class="chips" role="group" aria-label="How you played">
+          <button class="chip" type="button" data-board-input="cam">Camera</button>
+          <button class="chip" type="button" data-board-input="tap"><span class="only-touch">Taps</span><span class="only-desk">Mouse</span></button>
+        </div>
+      </div>
+      <ol id="podium" class="podium" aria-label="Top three"></ol>
+      <ol id="boardList" class="board-list" start="4"></ol>
+      <p id="boardEmpty" class="board-empty" hidden>No rounds here yet. Glove up and set the first score.</p>
+      <button id="boardBack" class="btn-secondary" type="button">Back</button>
     </div>
   </section>
 

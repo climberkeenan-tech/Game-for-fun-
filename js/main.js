@@ -4,6 +4,9 @@ import { Game, COLORS, drawBody, drawGhost } from './game.js';
 import { Sfx } from './sfx.js';
 import { Coach } from './coach.js';
 import { LEVEL_BANNERS, PUNCHES, PAD, multiplierFor } from './config.js';
+import {
+  gradeFor, boardKey, getBoard, bestFor, addEntry, renameEntry, getName, setName, cleanName, cornerNotes, migrateOldBest,
+} from './records.js';
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -31,8 +34,9 @@ const els = {
   setupHint: $('setupHint'),
   holdFill: $('holdFill'),
   debug: $('debug'),
+  hudBest: $('hudBest'),
 };
-const screens = { menu: $('menu'), setup: $('setup'), pause: $('pause'), results: $('results') };
+const screens = { menu: $('menu'), setup: $('setup'), pause: $('pause'), results: $('results'), board: $('board') };
 const ctx = els.canvas.getContext('2d');
 const DEBUG = new URLSearchParams(location.search).has('debug');
 const IS_DESK = document.documentElement.classList.contains('device-desk');
@@ -66,7 +70,10 @@ const settings = {
   skeleton: store.get('skeleton', 'on'),
   dodges: store.get('dodges', 'on'),
 };
-let best = Number(store.get('best', 0)) || 0;
+migrateOldBest();
+const MODE_NAMES = { 60: '1 min', 180: '3 min', 0: 'Survival' };
+let roundBest = 0; // the score to beat this round
+let beatBest = false;
 
 // ---------------------------------------------------------------- systems
 
@@ -257,15 +264,16 @@ function showScreen(name) {
 }
 
 function syncChips() {
-  document.querySelectorAll('.chip').forEach((b) => {
+  document.querySelectorAll('.chip[data-opt]').forEach((b) => {
     b.setAttribute('aria-pressed', String(String(settings[b.dataset.opt]) === b.dataset.val));
   });
+  updateMenuBest();
   coach.enabled = settings.coach === 'on';
   sfx.enabled = settings.sound === 'on';
   if (!coach.enabled) coach.stop();
 }
 
-document.querySelectorAll('.chip').forEach((btn) => {
+document.querySelectorAll('.chip[data-opt]').forEach((btn) => {
   btn.addEventListener('click', (e) => {
     const key = btn.dataset.opt;
     const val = key === 'mode' ? Number(btn.dataset.val) : btn.dataset.val;
@@ -305,7 +313,7 @@ function goMenu() {
   game.running = false;
   game.pads = [];
   game.ducks = [];
-  $('bestScore').textContent = fmt(best);
+  updateMenuBest();
   showScreen('menu');
 }
 
@@ -338,6 +346,11 @@ function beginCountdown(now) {
   game.levelIdx = 0;
   game.t = 0;
   game.duration = settings.mode * 1000;
+  roundBest = bestFor(boardKey(settings.mode, tapMode));
+  beatBest = false;
+  els.hudBest.hidden = !roundBest;
+  els.hudBest.textContent = `Best ${fmt(roundBest)}`;
+  els.hudBest.classList.remove('beat');
   hudCache.clear();
   updateHud();
   els.hud.hidden = false;
@@ -432,6 +445,13 @@ function updateHud() {
     els.hp.closest('.health').classList.toggle('low', hp <= 30);
   }
   setText(els.lvl, 'lvl', String(game.levelIdx + 1));
+  if (state === 'play' && roundBest > 0 && !beatBest && game.score > roundBest) {
+    beatBest = true;
+    els.hudBest.textContent = 'New best';
+    els.hudBest.classList.add('beat');
+    showBanner('New best', `You passed ${fmt(roundBest)}`);
+    sfx.levelUp();
+  }
 }
 
 function onLevel(idx) {
@@ -439,6 +459,10 @@ function onLevel(idx) {
   if (!b) return;
   let [title, sub] = b;
   if ((tapMode || settings.dodges !== 'on') && idx === 2) sub = 'Speed 3 · three-punch combos';
+  showBanner(title, sub);
+}
+
+function showBanner(title, sub) {
   els.banner.querySelector('.b-title').textContent = title;
   els.banner.querySelector('.b-sub').textContent = sub;
   els.banner.hidden = false;
@@ -464,16 +488,6 @@ function onCall(items) {
 
 // ---------------------------------------------------------------- results
 
-function verdict(r) {
-  if (r.total < 5) return 'No contest';
-  const perfectShare = r.hits ? r.perfect / r.hits : 0;
-  if (r.accuracy >= 0.92 && perfectShare >= 0.45) return 'Champion';
-  if (r.accuracy >= 0.82) return 'Contender';
-  if (r.accuracy >= 0.68) return 'Prospect';
-  if (r.accuracy >= 0.5) return 'Journeyman';
-  return 'Tomato can';
-}
-
 function onEnd(result) {
   state = 'over';
   lastResult = result;
@@ -488,15 +502,32 @@ function onEnd(result) {
   setTimeout(showResults, 1200);
 }
 
+let lastEntry = null; // { key, id } of the round just added to the leaderboard
+
 function showResults() {
   const r = lastResult;
   if (!r || state !== 'over') return;
   state = 'results';
-  const isBest = r.score > 0 && r.score > best;
-  if (isBest) {
-    best = r.score;
-    store.set('best', best);
-  }
+  const key = boardKey(settings.mode, tapMode);
+  const modeName = MODE_NAMES[settings.mode] || '';
+  const prevBest = bestFor(key);
+  const g = gradeFor(r);
+  r.grade = g;
+
+  // Leaderboard: every scoring round is offered to this device's board.
+  const entry = {
+    id: `r${Date.now().toString(36)}`,
+    name: getName(),
+    score: r.score,
+    letter: g ? g.letter : null,
+    rating: g ? g.rating : null,
+    level: r.level,
+    date: new Date().toISOString().slice(0, 10),
+  };
+  const place = r.score > 0 ? addEntry(key, entry) : null;
+  lastEntry = place ? { key, id: entry.id } : null;
+  const isBest = r.score > 0 && r.score > prevBest;
+
   const title = r.reason === 'ko' ? 'Knocked down' : 'Final bell';
   let sub;
   if (r.reason === 'ko') sub = r.duration ? `Health ran out at ${fmtTime(r.time)}.` : `You lasted ${fmtTime(r.time)}.`;
@@ -504,9 +535,37 @@ function showResults() {
   $('scResult').textContent = title;
   $('scSub').textContent = sub;
   $('scDate').textContent = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+  // Grade stamp.
+  $('scLetter').textContent = g ? g.letter : '–';
+  $('scRating').textContent = g ? `${g.rating} / 100` : 'Too short';
+  $('scGrade').setAttribute('aria-label', g ? `Grade ${g.letter}, ${g.rating} out of 100` : 'Not enough pads to grade');
+  $('scGrade').dataset.band = g ? g.letter[0] : 'none';
+  $('scTitle').textContent = g ? g.title : 'No contest';
+
+  // Score and the best to beat.
   $('scScore').textContent = fmt(r.score);
-  $('scVerdict').textContent = verdict(r);
   $('scBest').hidden = !isBest;
+  let toBeat = '';
+  if (isBest && prevBest > 0) toBeat = `Old best ${fmt(prevBest)}, beaten by ${fmt(r.score - prevBest)}`;
+  else if (!isBest && prevBest > 0) toBeat = `Best to beat ${fmt(prevBest)}. ${fmt(prevBest - r.score)} short.`;
+  $('scToBeat').textContent = toBeat;
+
+  // Place on the board.
+  const board = getBoard(key);
+  const place$ = $('scPlace');
+  const nameRow = $('scNameRow');
+  if (place) {
+    place$.textContent = `#${place} on the ${modeName}${tapMode ? (IS_DESK ? ' mouse' : ' taps') : ''} leaderboard`;
+    $('scName').value = entry.name === 'You' ? '' : entry.name;
+    $('scName').placeholder = 'Your name';
+    nameRow.hidden = false;
+  } else {
+    const last = board[board.length - 1];
+    place$.textContent = r.score > 0 && last ? `Score ${fmt(last.score + 1)} to make the top ${board.length}.` : '';
+    nameRow.hidden = true;
+  }
+
   $('stLanded').textContent = `${r.hits} / ${r.total}`;
   $('stAcc').textContent = `${Math.round(r.accuracy * 100)}%`;
   $('stPerfect').textContent = String(r.perfect);
@@ -515,6 +574,16 @@ function showResults() {
   $('stMissed').textContent = String(r.missed);
   $('stTime').textContent = fmtTime(r.time);
   $('stSpeed').textContent = String(r.level);
+
+  // From your corner: what worked and what to work on.
+  const notes = cornerNotes(r, { tapMode, dodges: settings.dodges === 'on' });
+  const fill = (el, items) => el.replaceChildren(...items.map((t) => Object.assign(document.createElement('li'), { textContent: t })));
+  if (!notes.good.length && !notes.work.length) notes.work.push('Throw a few more rounds and your corner will have notes for you.');
+  fill($('cornerGood'), notes.good);
+  fill($('cornerWork'), notes.work);
+  $('cornerGood').hidden = !notes.good.length;
+  $('cornerWork').hidden = !notes.work.length;
+
   $('shareMsg').hidden = true;
   els.hud.hidden = true;
   els.banner.hidden = true;
@@ -522,10 +591,95 @@ function showResults() {
   showScreen('results');
 }
 
+// Saving a name renames this round's entry and becomes the default for the next ones.
+function saveName() {
+  const name = cleanName($('scName').value);
+  setName(name);
+  if (lastEntry) renameEntry(lastEntry.key, lastEntry.id, name);
+}
+$('scName').addEventListener('change', saveName);
+$('scName').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    e.currentTarget.blur();
+  }
+});
+
+// ---------------------------------------------------------------- leaderboard screen
+
+const boardView = { mode: 60, input: 'cam', back: 'menu' };
+
+function openBoard(from) {
+  boardView.back = from;
+  boardView.mode = settings.mode;
+  boardView.input = from === 'results' && tapMode ? 'tap' : 'cam';
+  state = 'board';
+  renderBoard();
+  showScreen('board');
+}
+
+function closeBoard() {
+  state = boardView.back;
+  showScreen(boardView.back);
+}
+
+function renderBoard() {
+  document.querySelectorAll('[data-board-mode]').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.boardMode) === boardView.mode)));
+  document.querySelectorAll('[data-board-input]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.boardInput === boardView.input)));
+  const key = boardKey(boardView.mode, boardView.input === 'tap');
+  const list = getBoard(key);
+  const mine = lastEntry && lastEntry.key === key ? lastEntry.id : null;
+  const dateText = (d) => (d ? new Date(`${d}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '');
+  const row = (e, i, tag) => {
+    const li = document.createElement('li');
+    li.className = tag;
+    if (e.id === mine) li.classList.add('mine');
+    const rank = Object.assign(document.createElement('span'), { className: 'rk', textContent: String(i + 1) });
+    const name = Object.assign(document.createElement('span'), { className: 'nm', textContent: e.name || 'You' });
+    const grade = Object.assign(document.createElement('span'), { className: 'gr', textContent: e.letter || '–' });
+    const score = Object.assign(document.createElement('span'), { className: 'sc', textContent: fmt(e.score) });
+    const date = Object.assign(document.createElement('span'), { className: 'dt', textContent: dateText(e.date) });
+    li.append(rank, name, grade, score, date);
+    return li;
+  };
+  $('podium').replaceChildren(...list.slice(0, 3).map((e, i) => row(e, i, `pod p${i + 1}`)));
+  $('boardList').replaceChildren(...list.slice(3).map((e, i) => row(e, i + 3, 'line')));
+  $('boardEmpty').hidden = list.length > 0;
+}
+
+document.querySelectorAll('[data-board-mode]').forEach((b) => b.addEventListener('click', (e) => {
+  boardView.mode = Number(b.dataset.boardMode);
+  renderBoard();
+  blurAfterPointer(e);
+}));
+document.querySelectorAll('[data-board-input]').forEach((b) => b.addEventListener('click', (e) => {
+  boardView.input = b.dataset.boardInput;
+  renderBoard();
+  blurAfterPointer(e);
+}));
+$('boardBtn').addEventListener('click', (e) => {
+  blurAfterPointer(e);
+  openBoard('menu');
+});
+$('resBoardBtn').addEventListener('click', (e) => {
+  blurAfterPointer(e);
+  saveName();
+  openBoard('results');
+});
+$('boardBack').addEventListener('click', closeBoard);
+
+// The start screen shows the score to beat for the chosen round length.
+function updateMenuBest() {
+  const best = bestFor(boardKey(settings.mode, false));
+  $('targetLbl').textContent = `Best to beat · ${MODE_NAMES[settings.mode] || ''}`;
+  $('bestScore').textContent = best ? fmt(best) : 'none yet';
+}
+
 async function shareScore() {
   const r = lastResult;
   if (!r) return;
-  const text = `I scored ${fmt(r.score)} in Mitt Rush with ${Math.round(r.accuracy * 100)}% accuracy and a ${r.bestCombo}-hit combo. Beat that.`;
+  const grade = r.grade ? `a ${r.grade.letter} (${r.grade.rating}/100) and ` : '';
+  const text = `I got ${grade}${fmt(r.score)} points in a ${MODE_NAMES[settings.mode] || ''} round of Mitt Rush, with ${Math.round(r.accuracy * 100)}% accuracy. Beat that.`;
   const url = location.href.split('#')[0].split('?')[0];
   const msg = $('shareMsg');
   if (navigator.share) {
@@ -596,13 +750,17 @@ $('restartBtn').addEventListener('click', () => {
 });
 $('quitBtn').addEventListener('click', goMenu);
 $('againBtn').addEventListener('click', () => {
+  saveName();
   sfx.unlock();
   coach.unlock();
   requestWakeLock();
   if (tapMode) beginCountdown(performance.now());
   else enterSetup();
 });
-$('menuBtn').addEventListener('click', goMenu);
+$('menuBtn').addEventListener('click', () => {
+  saveName();
+  goMenu();
+});
 $('shareBtn').addEventListener('click', (e) => {
   shareScore();
   blurAfterPointer(e);
@@ -629,6 +787,8 @@ document.addEventListener('visibilitychange', () => {
 // Enter starts from the menu or runs it back from the scorecard.
 window.addEventListener('keydown', (e) => {
   if (e.altKey || e.ctrlKey || e.metaKey) return;
+  // Typing a name must not pause the game, toggle full screen or start a round.
+  if (e.target && e.target.closest && e.target.closest('input, textarea')) return;
   const key = e.key;
   if (e.repeat) {
     // Holding a key must not flip pause on and off or flicker full screen.
@@ -645,7 +805,8 @@ window.addEventListener('keydown', (e) => {
       resume();
     }
   } else if (key === 'Escape') {
-    if (state === 'play' || state === 'countdown') pause();
+    if (state === 'board') closeBoard();
+    else if (state === 'play' || state === 'countdown') pause();
     else if (state === 'paused') resume();
   } else if ((key === 'f' || key === 'F') && FS_ENABLED) {
     e.preventDefault();
@@ -930,7 +1091,7 @@ function frame(now) {
 syncChips();
 syncFullscreen();
 syncInstall();
-$('bestScore').textContent = fmt(best);
+updateMenuBest();
 if (document.fonts && document.fonts.load) {
   document.fonts.load('900 40px "Big Shoulders Display"').catch(() => {});
   document.fonts.load('700 16px "Barlow Semi Condensed"').catch(() => {});

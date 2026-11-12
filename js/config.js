@@ -72,11 +72,17 @@ export const HIT = {
   minSpeed: 1.45,  // peak fist speed (shoulder widths per second) needed in that time
   approach: 0.16,  // the fist must end at least this much closer to the pad (shoulder widths)
   travel: 0.27,    // ...after moving at least this far, so a twitch or a resting fist never counts
+  outward: 0.1,    // ...and moving out from the body, so pulling a fist back is never a punch
   upperRise: 0.3,  // uppercut pads need the fist to travel up at least this far
   reach: 1.3,      // hit radius as a multiple of the drawn pad radius
   fist: 0.1,       // plus the size of the fist itself (shoulder widths)
   deep: 0.5,       // inside this share of the pad radius a hit counts at once
+  jump: 0.45,      // a one-frame fist jump bigger than this (shoulder widths) waits a frame to be confirmed
+  spike: 0.25,     // a frame this far from both neighbours, which agree with each other, is a glitch
+  oneFrame: 0.75,  // ...and one camera frame may cover at most this share of a punch's approach
   cooldown: 160,   // one hand can land at most one pad per this many ms
+  justLit: 200,    // a punch landing this soon after its pad lit up, but started before, shows EARLY
+  earlyQuiet: 300, // no EARLY within this many ms of any hit
   rearmSpeed: 0.9, // after a hit, that fist counts again once it slows below this (shoulder widths/s)
   rearmMax: 450,   // ...or pulls back, or after this many ms at the latest
   hold: 150,       // a pad waits for an earlier pad for the same hand until this long past its ideal moment

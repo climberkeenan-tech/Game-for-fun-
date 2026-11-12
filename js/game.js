@@ -38,6 +38,25 @@ function segDist(px, py, ax, ay, bx, by) {
   return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
 }
 
+// Drops single camera frames that jump far from both neighbours while the
+// neighbours stay close together: tracking glitches, not fist movement.
+function dropSpikes(path, S) {
+  if (path.length < 3) return path;
+  const out = [path[0]];
+  for (let i = 1; i < path.length - 1; i++) {
+    const a = out[out.length - 1];
+    const b = path[i];
+    const c = path[i + 1];
+    const ab = Math.hypot(b.x - a.x, b.y - a.y);
+    const bc = Math.hypot(c.x - b.x, c.y - b.y);
+    const ac = Math.hypot(c.x - a.x, c.y - a.y);
+    if (ab > HIT.spike * S && bc > HIT.spike * S && ac < 0.5 * Math.min(ab, bc)) continue;
+    out.push(b);
+  }
+  out.push(path[path.length - 1]);
+  return out;
+}
+
 function judgeColor(j) {
   if (j === 'PERFECT') return COLORS.gold;
   if (j === 'GREAT') return COLORS.chalk;
@@ -92,6 +111,15 @@ export class Game {
     this.nextSetT = 1400;
     this.lastWasDuck = false;
     this.stats = { hits: 0, perfect: 0, great: 0, good: 0, missed: 0, slips: 0, ducks: 0 };
+    // Detail for the scorecard's grade and corner notes.
+    this.detail = {
+      byPunch: { 1: { hit: 0, miss: 0 }, 2: { hit: 0, miss: 0 }, 3: { hit: 0, miss: 0 }, 4: { hit: 0, miss: 0 }, 5: { hit: 0, miss: 0 }, 6: { hit: 0, miss: 0 } },
+      byHand: { L: { hit: 0, miss: 0 }, R: { hit: 0, miss: 0 } },
+      timingSum: 0,
+      timingN: 0,
+      early: 0,
+      caught: { hook: 0, straight: 0 },
+    };
     this.shake = 0;
     this.flash = 0;
     this.handSeen = { L: body ? body.hands.L.seq : 0, R: body ? body.hands.R.seq : 0 };
@@ -322,19 +350,17 @@ export class Game {
     const judgeAt = (s) => this.t - HIT.inputLag - (newest.t - s.t);
     const now = judgeAt(newest);
     let best = null;
+    let earlyFor = null;
     for (const p of this.pads) {
       if (p.state !== 'live' || p.hand !== key) continue;
       const free = this.freeFrom(p);
+      // EARLY is only for a pad that is simply not lit yet (not one waiting its
+      // turn in a combo), and only for this hand's next pad: a punch at an
+      // earlier pad may pass through it.
+      const earlyOk = !p.toldEarly && free === this.openAt(p) && now >= p.hitT - p.approach * 0.75 &&
+        !this.pads.some((q) => q !== p && q.state === 'live' && q.hand === key && q.hitT < p.hitT);
       if (now < free) {
-        // Thrown before the pad lit up: say so once instead of silently ignoring
-        // it. Only when it is simply early, not waiting its turn in a combo.
-        if (!p.toldEarly && free === this.openAt(p) && now >= p.hitT - p.approach * 0.75) {
-          const early = this.punchInto(p, all, F, judgeAt);
-          if (early) {
-            p.toldEarly = true;
-            this.popText('Early', early.pos.x, early.pos.y - early.pos.r - 14, COLORS.miss);
-          }
-        }
+        if (earlyOk) earlyFor = { p, settled: false }; // thrown before the pad lit up: say so (below)
         continue;
       }
       // Only movement since the pad became hittable counts.
@@ -342,6 +368,25 @@ export class Game {
       while (start < all.length && judgeAt(all[start]) < free) start++;
       const hit = this.punchInto(p, all.slice(start), F, judgeAt);
       if (hit && (!best || p.hitT < best.p.hitT)) best = { p, ...hit };
+      // A punch already on its way when the pad lit up doesn't count either; it
+      // gets EARLY rather than nothing at all.
+      else if (!hit && earlyOk && start > 0 && now - free < HIT.justLit) earlyFor = { p, settled: true };
+    }
+    // Only when nothing landed just now: a punch, or the other hand moving with
+    // it, can pass near the next pad.
+    const quiet = this.t - Math.max(this.handCooldown.L, this.handCooldown.R) > HIT.earlyQuiet;
+    if (!best && earlyFor && quiet) {
+      const p = earlyFor.p;
+      const early = this.punchInto(p, all, F, judgeAt);
+      // For a pad that is already lit, wait until the punch is over: its last
+      // frames may still count as a hit.
+      if (early && (!earlyFor.settled || early.settled)) {
+        p.toldEarly = true;
+        // That motion is spent: the pad needs a new punch.
+        p.freeAt = Math.max(p.freeAt ?? -Infinity, now);
+        this.detail.early++;
+        this.popText('Early', early.pos.x, early.pos.y - early.pos.r - 14, COLORS.miss);
+      }
     }
     if (best) {
       this.handCooldown[key] = this.t;
@@ -359,7 +404,14 @@ export class Game {
   // Did this stretch of fist movement punch into pad p? Returns where and when
   // (timed at the fist's closest point), or null. Waits one camera frame while
   // the fist is still closing in, unless it is already deep in the pad.
-  punchInto(p, path, F, judgeAt) {
+  punchInto(p, raw, F, judgeAt) {
+    if (raw.length < 2) return null;
+    // A fist that jumps a long way in one camera frame may be a tracking glitch:
+    // decide once the next frame shows whether it stays there.
+    const last = raw[raw.length - 1];
+    const prev = raw[raw.length - 2];
+    if (Math.hypot(last.x - prev.x, last.y - prev.y) > HIT.jump * F.S) return null;
+    const path = dropSpikes(raw, F.S);
     if (path.length < 2) return null;
     let peak = 0;
     for (const s of path) peak = Math.max(peak, s.sp || 0);
@@ -394,28 +446,53 @@ export class Game {
       // from a previous pad first), and how far it actually travelled.
       let dFar = -1;
       let far = path[0];
+      let farIdx = 0;
       for (let i = 0; i < at; i++) {
         const d = Math.hypot(path[i].x - pos.x, path[i].y - pos.y);
         if (d > dFar) {
           dFar = d;
           far = path[i];
+          farIdx = i;
         }
       }
       const moved = Math.hypot(path[at].x - far.x, path[at].y - far.y) / F.S;
       if ((dFar - dMin) / F.S < HIT.approach || moved < HIT.travel) return null;
+      // A real punch closes in over several camera frames; a tracking glitch
+      // covers nearly all of the distance in one.
+      let step = 0;
+      for (let i = farIdx + 1; i <= at; i++) {
+        const before = Math.hypot(path[i - 1].x - pos.x, path[i - 1].y - pos.y);
+        const after = i === at ? dMin : Math.hypot(path[i].x - pos.x, path[i].y - pos.y);
+        step = Math.max(step, before - after);
+      }
+      if (step > HIT.oneFrame * (dFar - dMin)) return null;
+      const out = Math.hypot(path[at].x - F.ax, path[at].y - F.ay) - Math.hypot(far.x - F.ax, far.y - F.ay);
+      if (out / F.S < HIT.outward) return null;
     }
-    return { pos, judgeT, sampleT: path[at].t };
+    // settled: the fist is already past its closest point, so later frames can't change the verdict.
+    return { pos, judgeT, sampleT: path[at].t, settled: at < path.length - 1 };
   }
 
   tapAt(x, y) {
     if (!this.running) return false;
     const F = this.frameOf();
     let best = null;
+    let early = null;
     for (const p of this.pads) {
-      if (p.state !== 'live' || this.t < this.freeFrom(p)) continue;
+      if (p.state !== 'live') continue;
       const pos = this.padPos(p, F);
       if (Math.hypot(x - pos.x, y - pos.y) > pos.r * 1.35) continue;
+      if (this.t < this.freeFrom(p)) {
+        // Tapped while still dim: same EARLY as a punch would get.
+        if (!p.toldEarly && this.t >= p.hitT - p.approach * 0.75 && (!early || p.hitT < early.p.hitT)) early = { p, pos };
+        continue;
+      }
       if (!best || p.hitT < best.p.hitT) best = { p, pos };
+    }
+    if (!best && early) {
+      early.p.toldEarly = true;
+      this.detail.early++;
+      this.popText('Early', early.pos.x, early.pos.y - early.pos.r - 14, COLORS.miss);
     }
     if (!best) return false;
     this.onHit(best.p, best.p.hand, this.t, best.pos);
@@ -435,6 +512,10 @@ export class Game {
     this.bestCombo = Math.max(this.bestCombo, this.combo);
     this.health = Math.min(HEALTH.start, this.health + HEALTH.heal[j]);
     this.stats.hits++;
+    this.detail.byPunch[p.n].hit++;
+    this.detail.byHand[p.hand].hit++;
+    this.detail.timingSum += judgeT - p.hitT;
+    this.detail.timingN++;
     if (j === 'PERFECT') this.stats.perfect++;
     else if (j === 'GREAT') this.stats.great++;
     else this.stats.good++;
@@ -453,6 +534,8 @@ export class Game {
     const pos = this.padPos(p, this.frameOf());
     Object.assign(p, { state: 'missed', doneT: this.fxT, x: pos.x, y: pos.y, r: pos.r });
     this.stats.missed++;
+    this.detail.byPunch[p.n].miss++;
+    this.detail.byHand[p.hand].miss++;
     this.combo = 0;
     this.health -= HEALTH.miss;
     this.flash = Math.max(this.flash, 0.45);
@@ -492,6 +575,7 @@ export class Game {
       this.checkLevel();
     } else {
       this.combo = 0;
+      this.detail.caught[d.kind]++;
       this.health -= HEALTH.caught;
       this.flash = 1;
       this.shake = 16;
@@ -533,8 +617,15 @@ export class Game {
   result() {
     const s = this.stats;
     const total = s.hits + s.missed;
+    const d = this.detail;
     return {
       ...s,
+      byPunch: d.byPunch,
+      byHand: d.byHand,
+      timingBias: d.timingN ? d.timingSum / d.timingN : 0,
+      early: d.early,
+      caught: d.caught,
+      leadHand: this.leadHand,
       reason: this.endReason,
       score: this.score,
       time: this.t,

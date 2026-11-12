@@ -25,6 +25,7 @@ const SHELL = [
   'js/config.js',
   'js/sfx.js',
   'js/coach.js',
+  'js/records.js',
   'manifest.webmanifest',
   'icons/icon-192.png',
   'icons/icon-512.png',

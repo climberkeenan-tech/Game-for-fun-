@@ -122,6 +122,7 @@ export class Body {
     this.lastGoodT = -1e9;
     this.parts = { head: false, shoulders: false, left: false, right: false };
     this.filters = [];
+    this.prevWrists = null;
     this.hands.L.reset();
     this.hands.R.reset();
   }
@@ -137,6 +138,23 @@ export class Body {
     }
     this.hasPose = true;
     this.lastPoseT = now;
+    // The tracker sometimes swaps left and right arms for a frame or two. Keep
+    // each fist on the arm it was on: if the two wrists are each much closer to
+    // where the other one just was, swap the arms back.
+    const raw = (i) => (lms[i] && (lms[i].visibility ?? 1) >= 0.3 ? map(lms[i].x, lms[i].y) : null);
+    const wl = raw(15);
+    const wr = raw(16);
+    const pw = this.prevWrists;
+    if (wl && wr && pw && now - pw.t < 200) {
+      const d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+      const same = d(wl, pw.L) + d(wr, pw.R);
+      const cross = d(wl, pw.R) + d(wr, pw.L);
+      if (cross < same * 0.5 && same > 0.5 * (this.S || 150)) {
+        lms = lms.slice();
+        for (const [a, b] of [[13, 14], [15, 16], [17, 18], [19, 20], [21, 22]]) [lms[a], lms[b]] = [lms[b], lms[a]];
+        this.prevWrists = { L: wr, R: wl, t: now };
+      } else this.prevWrists = { L: wl, R: wr, t: now };
+    } else this.prevWrists = wl && wr ? { L: wl, R: wr, t: now } : null;
     const pts = new Array(lms.length);
     const scale = Math.max(40, this.S || 150);
     for (let i = 0; i < lms.length; i++) {

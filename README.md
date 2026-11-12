@@ -24,7 +24,7 @@ Southpaw mode swaps lead and rear.
 
 **Timing.** A pad lights up about half a second before its ring closes, and that is when it can be hit. Punch it while it is still dim and you'll see EARLY. Hitting as the ring lands scores PERFECT (300), close to it GREAT (200), otherwise GOOD (100).
 
-**One hand, one pad.** Only the matching fist counts: blue pads take your left, red pads your right. The other hand passing through does nothing. One punch takes one pad: combos go in order, and a fist that just landed has to stop or pull back before it can land again, so a follow-through can't knock out the next pad.
+**One hand, one pad.** Only the matching fist counts: blue pads take your left, red pads your right. The other hand passing through does nothing. One punch takes one pad: combos go in order, a punch has to move out from your body into the pad (pulling your fist back never counts), and a fist that just landed has to stop or pull back before it can land again, so a follow-through can't knock out the next pad. Single-frame tracking glitches, including the tracker briefly swapping your left and right wrists, are ignored.
 
 **Combo.** Every 5 hits in a row adds x0.25 to your multiplier, up to x4. A miss resets it.
 
@@ -33,6 +33,12 @@ Southpaw mode swaps lead and rear.
 **Slips and ducks.** From speed 3 on, the coach throws punches back at you. The coach calls "duck" for a hook swinging in from the side: roll under it by dropping your head. "Slip" means a straight coming at your face: move your head to either side, or duck. The ring around your head turns white once you're out of the way. Turn these off with **Dodges: Off** on the start screen.
 
 **Speed.** Scoring unlocks 8 speed levels with faster pads and longer combinations (1-2, 1-2-3, 1-6-3-2 and so on). The coach calls each combination out loud.
+
+**Grade.** Every round of 8 pads or more gets a letter grade from A+ down to F, with a rating out of 100 and a title from Champion to Tomato can. The grade measures how well you boxed, not how long the round was: accuracy counts 50%, timing 35% (PERFECT counts fully, GREAT 70%, GOOD 40%) and dodging 15% when the coach threw punches back.
+
+**From your corner.** The scorecard ends with what went well and what to work on next, based on that round. For example, which punch type missed most, whether you were early or late and by how much, a weaker hand, getting caught by the hook, or short combos.
+
+**Best to beat and the leaderboard.** The start screen shows the score to beat for the round length you picked, and the score tape shows it during the round, flashing NEW BEST when you pass it. The top 10 rounds for each round length are kept on a leaderboard with name, grade and date. Camera rounds and tap or mouse rounds have separate boards. The leaderboard is stored on this device only.
 
 **Modes.** 1-minute round, 3-minute round, or survival until your health runs out. No camera? "Play with taps" (or "Play with your mouse" on a laptop) works on any screen.
 
@@ -88,6 +94,7 @@ js/tracker.js       MediaPipe pose landmarker wrapper (full model, lite fallback
 js/config.js        every tuning number: punch positions, speed levels, timing windows, health
 js/sfx.js           synthesized sound effects (no audio files)
 js/coach.js         spoken combination calls
+js/records.js       grades, the leaderboard and the corner's notes (kept in localStorage)
 models/             pose_landmarker_full.task and pose_landmarker_lite.task
 vendor/mediapipe/   MediaPipe Tasks Vision runtime
 ```
