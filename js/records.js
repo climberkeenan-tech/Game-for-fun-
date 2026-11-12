@@ -26,14 +26,14 @@ function titleFor(rating) {
 }
 
 // How well you boxed, whatever the round length: accuracy counts most, then
-// speed (PERFECT/GREAT/GOOD), then form (clean punches rather than sloppy ones, camera rounds
-// only), then defense (when the coach threw anything back). Rounds with too few
-// pads to judge get no grade.
+// speed (PERFECT/GREAT/GOOD), then form (the average quality of your punches,
+// camera rounds only), then defense (when the coach threw anything back).
+// Rounds with too few pads to judge get no grade.
 export function gradeFor(r, { tapMode = false } = {}) {
   if (r.total < 8) return null;
   const accuracy = r.hits / r.total;
   const timing = r.hits ? (r.perfect + 0.7 * r.great + 0.4 * r.good) / r.hits : 0;
-  const form = r.hits ? (r.clean ?? r.hits) / r.hits : 0;
+  const form = r.hits ? r.quality ?? (r.clean ?? r.hits) / r.hits : 0;
   const parts = [[0.4, accuracy], [0.25, timing]];
   if (!tapMode) parts.push([0.2, form]);
   if (r.ducks > 0) parts.push([0.15, r.slips / r.ducks]);
@@ -142,11 +142,11 @@ export function cleanName(raw) {
 
 const GROUPS = [
   { key: 'straight', nums: [1, 2], name: 'Jabs and crosses', short: 'jabs and crosses',
-    fix: 'Punch out toward the pad itself, up beside your head, not straight at the camera.' },
+    fix: 'Throw each one as soon as the pad pops up: fist out from your guard, then straight back.' },
   { key: 'hook', nums: [3, 4], name: 'Hooks', short: 'hooks',
-    fix: 'Swing the fist out to the side pad with your elbow up, then across.' },
+    fix: 'Swing the fist out toward the side pad with your elbow up, then bring it back.' },
   { key: 'upper', nums: [5, 6], name: 'Uppercuts', short: 'uppercuts',
-    fix: 'Start the fist low and drive it straight up through the pad.' },
+    fix: 'Dip the fist a little, then drive it straight up through the pad.' },
 ];
 
 const pct = (x) => `${Math.round(x * 100)}%`;
@@ -196,18 +196,22 @@ export function cornerNotes(r, { tapMode, dodges }) {
     if (perfectShare >= 0.6 || (react && react <= 600)) good.push({ w: perfectShare * 10, text: `Fast hands: ${secs(react)} on average from pad to punch.` });
   }
 
-  // Technique: swings that weren't punches, and sloppy ones.
+  // Technique: the wrong hand, swings that weren't punches, and sloppy ones.
   if (!tapMode) {
     const f = r.flaws || {};
+    if ((f.hand || 0) >= 2) work.push({ w: f.hand * 1.6, text: `${f.hand} punches came from the wrong hand, for half the points. Blue pads are for your left hand, red pads for your right.` });
     const swings = (f.guard || 0) + (f.bob || 0) + (f.curve || 0) + (f.slow || 0);
-    if (swings >= 3) work.push({ w: swings * 1.1, text: `${swings} hits were swings or waves rather than punches. Start each one with your fists up by your chin, punch straight out to the pad, and bring it back.` });
-    if ((f.short || 0) >= 2) work.push({ w: f.short, text: `${f.short} punches stopped short. Punch all the way out to the pad, not just a flick from your guard.` });
+    if (swings >= 3) work.push({ w: swings * 1.1, text: `${swings} hits were swings or waves rather than punches. Start each one with your fists up by your chin, punch straight out, and bring it back.` });
+    if ((f.type || 0) >= 2) work.push({ w: f.type * 1.2, text: `${f.type} uppercut pads got a punch that didn't go up. Dip the fist a little, then drive it up through the pad.` });
+    if ((f.aim || 0) >= 3) work.push({ w: f.aim, text: `${f.aim} punches finished well wide of the pad. Aim at it: jabs and crosses up beside your head, hooks out to the side, uppercuts up the middle.` });
+    if ((f.short || 0) >= 2) work.push({ w: f.short, text: `${f.short} hooks stopped short. Swing all the way out to the pad, not just a flick from your guard.` });
     if ((f.extend || 0) >= 2) work.push({ w: f.extend * 1.2, text: `${f.extend} jabs and crosses were sloppy: the arm didn't straighten. Drive the fist all the way out to the pad, then snap it back.` });
     if ((f.elbow || 0) >= 2) work.push({ w: f.elbow * 1.2, text: `${f.elbow} hooks came in with the elbow low. Lift the elbow to shoulder height and swing through.` });
     if ((f.bent || 0) >= 2) work.push({ w: f.bent * 1.2, text: `${f.bent} hooks or uppercuts were straight-arm swings. Keep the elbow bent and drive from your legs.` });
     if ((f.snap || 0) >= 3) work.push({ w: f.snap, text: `${f.snap} punches were slow pushes. Snap them out and back.` });
     if ((r.punches || 0) >= 8 && r.handsDown / r.punches >= 0.3) work.push({ w: (r.handsDown / r.punches) * 10, text: `Your other hand dropped on ${pct(r.handsDown / r.punches)} of your punches. Keep it up by your chin while the other one works.` });
-    if (r.hits >= 8 && (r.clean ?? 0) / r.hits >= 0.9) good.push({ w: 9, text: `Clean technique: ${pct(r.clean / r.hits)} of your punches were clean.` });
+    const q = r.quality ?? (r.hits ? (r.clean ?? 0) / r.hits : 0);
+    if (r.hits >= 8 && q >= 0.9) good.push({ w: 9, text: `Clean technique: your punches averaged ${pct(q)} quality.` });
   }
 
   // Defense.

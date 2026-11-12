@@ -7,7 +7,7 @@ A boxing pad-work game that runs in the browser on a phone or a laptop. Set the 
 1. **Phone:** lean it against something at about chest height with the screen facing you.
    **Laptop:** set it on a table or counter and tilt the screen so the camera faces the spot where you will stand.
 2. Step back about 6 feet (2 m) so your head, shoulders and both fists are in the shot.
-3. Keep your fists up by your chin and punch each pad as soon as it shows up: straight out from your guard into the pad, then back. You don't have to hit dead center.
+3. Keep your fists up by your chin and punch each pad as soon as it shows up, then bring the fist back. Any real punch counts, including one thrown straight at the camera: you don't have to reach the pad on screen.
 
 Pads use the trainer's number system and are colored by the hand that should throw them:
 
@@ -24,24 +24,29 @@ Southpaw mode swaps lead and rear.
 
 **Speed.** A pad can be hit the moment it shows up, and the faster you hit it the more it scores: within about two thirds of a second is PERFECT (300), within a second GREAT (200), later GOOD (100). The ring around it is a countdown: it drains away, turning gold and then orange, and when it runs out the pad is missed. The next set comes a moment after you finish the current one, so quick hands get more pads.
 
-**One hand, one pad.** Each hand has one pad on screen at a time: the next blue pad appears once the current one is hit or missed, and the same for red, so pads never stack up. Only the matching fist counts: blue pads take your left, red pads your right. One punch takes one pad: combos go in order, pulling your fist back never counts, and a fist that just landed has to stop or pull back before it can land again. Single-frame tracking glitches, including the tracker briefly swapping your left and right wrists, are ignored.
+**One hand, one pad.** Each hand has one pad on screen at a time: the next blue pad appears once the current one is hit or missed, and the same for red, so pads never stack up. Blue pads are for your left, red pads for your right. One punch takes one pad: combos go in order, pulling your fist back never counts, and a fist that just landed has to stop or pull back before it can land again. Single-frame tracking glitches, including the tracker briefly swapping your left and right wrists, are ignored.
 
-**Good hits and bad hits.** Any time your matching fist goes into a pad, it counts: the pad pops right away with a thud. A moment later (once the punch has finished) you see whether it was a good punch or a sloppy one:
-- a good punch leaves your guard (fist up by your chin, elbow bent), goes fairly straight and quickly out to the pad, and has good form: a jab or cross straightens the arm, a hook keeps the elbow up and bent, an uppercut dips and drives up with the arm bent, and every punch is snappy. It scores PERFECT, GREAT or GOOD by how fast you hit the pad, and grows your combo.
-- anything else is SLOPPY, with a one-line fix ("start from your guard", "extend the arm", "punch straight to it", "elbow up"...). It scores half and doesn't grow your combo. Waving your hand through pads counts, but always as SLOPPY.
-Moving your whole body (bouncing, swaying, stepping) doesn't set pads off: only your arm's own movement counts.
+**Every punch lands.** A pad goes down when your fist reaches it on screen, or when you throw any real punch while it's up, however close it got. A real punch is a quick move of the fist out from your body (or up, for an uppercut) that stops or comes back. A punch thrown straight at the camera counts too: the tracker's 3D estimate sees the arm straighten, and on screen the arm looks shorter as it points at the camera. Only a punch thrown after the pad showed up counts for it. Moving your whole body (bouncing, swaying, stepping), resting your fists, and lowering or raising your arms don't set pads off.
 
-**Combo.** Every 5 hits in a row adds x0.25 to your multiplier, up to x4. A miss resets it.
+**How good it was.** The pad pops right away with a thud. A moment later, once the punch has finished, it gets a quality from 25% to 100%, and its points scale with it. Each flaw costs a share:
+- the wrong hand (a red pad punched with your left): half
+- not starting from your guard, a swing or wave rather than a punch, an uppercut that was one more bob of the hand, or an uppercut pad hit by a punch that didn't go up: about a quarter to a third
+- a punch that finished well wide of the pad: up to 40%
+- small form flaws: a jab or cross that didn't straighten the arm, a hook with the elbow low or the arm straight, a slow push rather than a snap: 15% each
 
-**Health.** A missed pad costs 8, getting caught by a counter punch costs 15. Clean hits win a little back. At zero you are knocked down and the round ends.
+A good punch (80% or more) shows PERFECT, GREAT or GOOD by how fast you hit the pad, plus a tip if something small was off, and grows your combo. Anything less shows SLOPPY with the fix ("blue = left hand", "start from your guard", "extend the arm", "elbow up"...). It doesn't grow your combo, but doesn't break it either.
+
+**Combo.** Every 5 good hits in a row adds x0.25 to your multiplier, up to x4. A miss resets it.
+
+**Health.** A missed pad costs 8, getting caught by a counter punch costs 15. Good hits win a little back. At zero you are knocked down and the round ends.
 
 **Slips and ducks.** From speed 3 on, the coach throws punches back at you. The coach calls "duck" for a hook swinging in from the side: roll under it by dropping your head. "Slip" means a straight coming at your face: move your head to either side, or duck. The ring around your head turns white once you're out of the way. Turn these off with **Dodges: Off** on the start screen.
 
 **Speed levels.** Scoring unlocks 8 speed levels with less time per pad and longer combinations (1-2, 1-2-3, 1-6-3-2 and so on). The coach calls each combination out loud.
 
-**Grade.** Every round of 8 pads or more gets a letter grade from A+ down to F, with a rating out of 100 and a title from Champion to Tomato can. The grade measures how well you boxed, not how long the round was: accuracy counts 40%, speed 25% (PERFECT counts fully, GREAT 70%, GOOD 40%), clean form 20% (camera rounds) and dodging 15% when the coach threw punches back.
+**Grade.** Every round of 8 pads or more gets a letter grade from A+ down to F, with a rating out of 100 and a title from Champion to Tomato can. The grade measures how well you boxed, not how long the round was: accuracy counts 40%, speed 25% (PERFECT counts fully, GREAT 70%, GOOD 40%), punch quality 20% (the average quality of your hits, camera rounds only) and dodging 15% when the coach threw punches back.
 
-**From your corner.** The scorecard ends with what went well and what to work on next, based on that round. For example, which punch type missed most, sloppy jabs that didn't straighten, hooks with the elbow low, swings that didn't count as punches, your other hand dropping, how quickly you reacted, getting caught by the hook, or short combos.
+**From your corner.** The scorecard ends with what went well and what to work on next, based on that round. For example, which punch type missed most, punches with the wrong hand, sloppy jabs that didn't straighten, hooks with the elbow low, swings and waves rather than punches, your other hand dropping, how quickly you reacted, getting caught by the hook, or short combos.
 
 **Best to beat and the leaderboard.** The start screen shows the score to beat for the round length you picked, and the score tape shows it during the round, flashing NEW BEST when you pass it. The top 10 rounds for each round length are kept on a leaderboard with name, grade and date. Camera rounds and tap or mouse rounds have separate boards. The leaderboard is stored on this device only.
 
@@ -106,7 +111,7 @@ vendor/mediapipe/   MediaPipe Tasks Vision runtime
 
 After replacing anything in `vendor/` or `models/`, bump `ASSET_CACHE` in `sw.js` so installed copies pick up the new files.
 
-Gameplay feel lives in `js/config.js`. If punches are not registering, lower `HIT.minSpeed` or `HIT.travel`, or raise `HIT.reach`. If pads go off when you didn't mean to hit them, do the opposite. `FORM` holds what counts as a real punch and what makes one sloppy. `LEVELS[].window` sets how long each pad stays up. `PAD.size` sets how big pads are next to your body.
+Gameplay feel lives in `js/config.js`. `PUNCH` decides what counts as a punch: if real punches are not registering, lower `PUNCH.speed` or `PUNCH.travel` (punches on screen) or `PUNCH.rise3` and `PUNCH.shorten` (punches at the camera). If pads go off when you didn't mean to hit them, do the opposite. `HIT` covers a fist reaching a pad on screen. `FORM` holds what makes a punch good or sloppy, and `QUALITY` what each flaw costs. `LEVELS[].window` sets how long each pad stays up. `PAD.size` sets how big pads are next to your body.
 
 ## Credits
 

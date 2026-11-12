@@ -571,7 +571,7 @@ function showResults() {
   $('stPerfect').textContent = String(r.perfect);
   $('stCombo').textContent = String(r.bestCombo);
   $('stSlips').textContent = tapMode || settings.dodges !== 'on' ? 'Off' : `${r.slips} / ${r.ducks}`;
-  $('stClean').textContent = tapMode ? 'n/a' : `${r.clean} / ${r.hits}`;
+  $('stClean').textContent = tapMode || r.quality == null ? 'n/a' : `${Math.round(r.quality * 100)}%`;
   $('stTime').textContent = fmtTime(r.time);
   $('stSpeed').textContent = String(r.level);
 

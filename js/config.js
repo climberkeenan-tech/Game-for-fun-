@@ -86,12 +86,67 @@ export const HIT = {
   rearmMax: 450,   // ...or pulls back, or after this many ms at the latest
 };
 
-// Punch form. A punch leaves the guard (fist within guardZone shoulder widths
-// of the chin, elbow bent) in the last guardLook ms, reaches the pad within
-// maxReach ms on a fairly direct line (an uppercut dips first), and stops or
-// comes back there instead of carrying on through. Anything else is a hand
-// waving around and doesn't count. A punch with a form flaw is SLOPPY: it takes
-// the pad for sloppyShare of the points and doesn't grow the combo.
+// Any real punch lands on that hand's pad, even one that never reaches the pad
+// on screen: a punch thrown at the camera hardly moves the fist in the picture.
+// A punch is a quick stroke of the fist away from its shoulder (or up, for an
+// uppercut) that then stops or turns back, or the arm snapping straight toward
+// the camera, which the tracker's 3D estimate shows. It is judged once it has
+// finished. Body bounce and sway are taken out first, so only the arm counts.
+export const PUNCH = {
+  look: 650,       // ms of fist movement searched for a finished punch
+  move: 1.0,       // a stroke: the fist moving at least this fast (shoulder widths per second)...
+  turn: 0.3,       // ...without turning more than about 70 degrees between camera frames
+  speed: 1.5,      // a punch peaks at least this fast,
+  travel: 0.3,     // covers at least this distance (shoulder widths)
+  maxMs: 550,      // within this many ms,
+  out: 0.1,        // and ends at least this much further from its shoulder than it started,
+  up: 0.25,        // or this much higher (an uppercut).
+  down: 0.2,       // It never drops more than this,
+  low: 0.7,        // starts no lower than this below the shoulders (raising your hands isn't a punch)
+  end: 0.45,       // and ends no lower than this below them.
+  rise3: 0.2,      // At the camera: the arm straightens by this much in 3D...
+  straight3: 0.8,  // ...to at least this straight...
+  riseMs: 400,     // ...within this many ms, while on screen the arm looks
+  shorten: 0.2,    // ...at least this much shorter (it points at the camera),
+  hold: 70,        // ...and has stopped straightening for this long.
+  early: 50,       // a punch counts for a pad if it started no more than this many ms before the pad showed up
+  wrongAfter: 250, // A punch with the other hand takes a pad only once it has been up this long,
+  wrongQuiet: 400, // ...while its own hand hasn't landed anything for this long,
+  wrongTravel: 0.4, // ...and only a full punch (this far on screen, or at the camera).
+};
+
+// How good a landed punch was, from 25% to 100%: its points are multiplied by
+// the factor of each flaw it had. Under `sloppy` it shows as SLOPPY and doesn't
+// grow the combo; otherwise it shows PERFECT, GREAT or GOOD (by speed) with a
+// tip if anything was off.
+export const QUALITY = {
+  floor: 0.25,
+  sloppy: 0.8,
+  cut: {
+    hand: 0.5,    // the other hand's pad
+    type: 0.75,   // an uppercut pad hit by a punch that didn't go up
+    guard: 0.7,   // didn't start from the guard
+    bob: 0.7,     // an uppercut that was one more stroke of a hand bobbing up and down
+    curve: 0.75,  // a swing or wave rather than a punch
+    slow: 0.85,
+    short: 0.85,
+    extend: 0.85,
+    elbow: 0.85,
+    bent: 0.85,
+    snap: 0.85,
+  },
+  // Aim, for a punch that didn't reach its pad on screen: full marks within
+  // aimFrom shoulder widths of the pad's edge, down to aimMin at aimTo or more.
+  aimFrom: 0.3,
+  aimTo: 1.2,
+  aimMin: 0.6,
+};
+
+// Punch form. A good punch leaves the guard (fist within guardZone shoulder
+// widths of the chin, elbow bent) in the last guardLook ms, reaches the pad
+// within maxReach ms on a fairly direct line (an uppercut dips first), and
+// stops or comes back there instead of carrying on through. Each flaw costs
+// some of the punch's points (QUALITY).
 export const FORM = {
   guardZone: 0.55,   // around the chin...
   ownGuard: 0.35,    // ...or this close to where this player holds that fist (learned)
@@ -119,8 +174,8 @@ export const FORM = {
   bobFrom: 0.15,     // ...from down around the pad's level (no higher than this above its center)
   elbowDrop: 0.1,    // hook: elbow no more than this far below the shoulder
   bentMax: 0.92,     // hook/uppercut: arm no straighter than this (no straight-arm swings)
-  snap: 2.2,         // peak fist speed (shoulder widths per second) for a crisp punch
-  sloppyShare: 0.5,
+  snap: 2.2,         // peak fist speed (shoulder widths per second) for a crisp punch,
+  snap3: 1.2,        // or, at the camera, how fast the arm straightens (straightness per second)
   judgeAfter: 150,   // ms after a fist lands before the punch is judged (it pops at once)
 };
 

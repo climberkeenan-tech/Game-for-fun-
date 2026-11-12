@@ -231,6 +231,9 @@ export class Body {
       }
       if (sh.v > 0.5 && el.v > 0.4) {
         extra.ext2 = straightness(sh, el, w);
+        // How long the arm looks on screen: it looks much shorter when it
+        // points at the camera, which backs up the 3D estimate.
+        if (this.S) extra.arm2 = (Math.hypot(el.x - sh.x, el.y - sh.y) + Math.hypot(w.x - el.x, w.y - el.y)) / this.S;
         if (this.S) extra.elbowUp = (sh.y - el.y) / this.S;
         const W3 = lms.world;
         if (W3 && W3[ids.wrist] && W3[ids.elbow] && W3[ids.shoulder]) extra.ext3 = straightness(W3[ids.shoulder], W3[ids.elbow], W3[ids.wrist]);
