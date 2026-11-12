@@ -18,20 +18,21 @@ export const PUNCHES = {
 export const PAD = { size: 0.38, min: 30, maxShare: 0.16 };
 
 // Speed levels unlock by score. Times are in milliseconds.
-// approach: how long a pad is on screen before its ideal hit moment
-// gap: rest between the end of one set and the start of the next
-// beat: spacing between punches inside a combo
+// window: how long a pad stays up once it shows; hit it any time before then,
+//   and the sooner the better
+// gap: rest after one set is finished before the next one starts
+// beat: spacing between the pads of a combo as they show up
 // maxLen: longest combo that can be called
-// duck: chance that a set is replaced by a duck
+// duck: chance that a set is the coach throwing a punch back instead
 export const LEVELS = [
-  { at: 0,     approach: 1700, gap: 950, beat: 560, maxLen: 1, duck: 0 },
-  { at: 3000,  approach: 1550, gap: 850, beat: 520, maxLen: 2, duck: 0 },
-  { at: 8000,  approach: 1400, gap: 760, beat: 480, maxLen: 3, duck: 0.16 },
-  { at: 16000, approach: 1280, gap: 680, beat: 440, maxLen: 3, duck: 0.18 },
-  { at: 28000, approach: 1150, gap: 620, beat: 410, maxLen: 4, duck: 0.2 },
-  { at: 45000, approach: 1050, gap: 560, beat: 380, maxLen: 4, duck: 0.22 },
-  { at: 70000, approach: 950,  gap: 520, beat: 350, maxLen: 5, duck: 0.24 },
-  { at: 100000, approach: 860,  gap: 480, beat: 330, maxLen: 5, duck: 0.25 },
+  { at: 0,      window: 2200, gap: 750, beat: 450, maxLen: 1, duck: 0 },
+  { at: 3000,   window: 2000, gap: 680, beat: 420, maxLen: 2, duck: 0 },
+  { at: 8000,   window: 1850, gap: 620, beat: 390, maxLen: 3, duck: 0.16 },
+  { at: 16000,  window: 1700, gap: 560, beat: 360, maxLen: 3, duck: 0.18 },
+  { at: 28000,  window: 1550, gap: 500, beat: 330, maxLen: 4, duck: 0.2 },
+  { at: 45000,  window: 1400, gap: 450, beat: 300, maxLen: 4, duck: 0.22 },
+  { at: 70000,  window: 1300, gap: 400, beat: 280, maxLen: 5, duck: 0.24 },
+  { at: 100000, window: 1200, gap: 360, beat: 260, maxLen: 5, duck: 0.25 },
 ];
 
 export const LEVEL_BANNERS = [
@@ -63,11 +64,10 @@ export const SPOKEN = ['', 'one', 'two', 'three', 'four', 'five', 'six'];
 // counts movement that starts after the previous pad was hit, so one punch, its
 // follow-through, or the other hand moving with it can't take a second pad.
 export const HIT = {
-  early: 500,      // ms before its ideal moment that a pad starts taking hits (it lights up then)
-  late: 360,       // ms after its ideal moment before an unhit pad counts as a miss
+  popIn: 140,      // ms a pad takes to pop in when it shows up (it can be hit right away)
   inputLag: 70,    // camera + tracking delay subtracted before judging timing
-  perfect: 120,    // |timing error| at or under this is PERFECT
-  great: 250,      // at or under this is GREAT, otherwise GOOD
+  perfect: 650,    // hit within this many ms of the pad showing up for PERFECT (at most 45% of its window)
+  great: 1000,     // ...within this for GREAT (at most 75% of its window), otherwise GOOD
   path: 320,       // ms of recent fist movement checked against each pad
   minSpeed: 1.45,  // peak fist speed (shoulder widths per second) needed in that time
   approach: 0.16,  // the fist must end at least this much closer to the pad (shoulder widths)
@@ -82,11 +82,8 @@ export const HIT = {
   spike: 0.25,     // a frame this far from both neighbours, which agree with each other, is a glitch
   oneFrame: 0.75,  // ...and one camera frame may cover at most this share of a punch's approach
   cooldown: 160,   // one hand can land at most one pad per this many ms
-  justLit: 200,    // a punch landing this soon after its pad lit up, but started before, shows EARLY
-  earlyQuiet: 300, // no EARLY within this many ms of any hit
   rearmSpeed: 0.9, // after a hit, that fist counts again once it slows below this (shoulder widths/s)
   rearmMax: 450,   // ...or pulls back, or after this many ms at the latest
-  minShow: 550,    // one pad per hand is shown at a time; each gets at least this long on screen
 };
 
 // Punch form. A punch leaves the guard (fist within guardZone shoulder widths
@@ -96,9 +93,15 @@ export const HIT = {
 // waving around and doesn't count. A punch with a form flaw is SLOPPY: it takes
 // the pad for sloppyShare of the points and doesn't grow the combo.
 export const FORM = {
-  guardZone: 0.55,
+  guardZone: 0.55,   // around the chin...
+  ownGuard: 0.35,    // ...or this close to where this player holds that fist (learned)
+  guardLow: 0.35,    // a learned guard spot is no lower than this below the shoulder line
+  guardWide: 0.85,   // ...and no further out to the side than this,
+  holdFor: 180,      // ...where the fist was held still for at least this many ms
+  minTravel: 0.3,    // jabs, crosses and hooks travel at least this far from the guard (shoulder widths)
   guardBend: 0.85,   // in guard the arm is bent: straightness at most this
   guardLook: 700,
+  restSpeed: 1.5,    // in the guard the fist slows below this (shoulder widths/s) at least once
   maxReach: 450,     // ms from leaving the guard to reaching the pad (straights and hooks)
   stray: 0.35,       // on the way, the fist strays sideways from the straight line by at most
   strayMin: 0.22,    // this share of the distance (or this many shoulder widths, if more)
@@ -106,9 +109,14 @@ export const FORM = {
   turnBack: 0.05,    // it counts once the fist turns back this far,
   settle: 160,       // or after this many ms without carrying on
   hintEvery: 2500,   // ms between "No punch" reminders
-  extend3: 0.2,      // jab/cross: the arm straightens by this much in 3D during the punch...
-  straightArm: 0.8,  // ...and ends at least this straight
-  extend2: 0.18,     // (in the flat image, when there's no 3D estimate)
+  extend3: 0.15,     // jab/cross: the arm straightens by this much in 3D during the punch...
+  straightArm: 0.75, // ...and ends at least this straight;
+  extend2: 0.2,      // or in the flat image, by this much...
+  straightArm2: 0.8, // ...ending at least this straight
+  upperTop: 0.15,    // uppercut: drives up to within this of the chin (shoulder widths below it)
+  bobLook: 1000,     // ...and the same fist didn't already rise
+  bobRise: 0.25,     // ...this far in the bobLook ms before it,
+  bobFrom: 0.15,     // ...from down around the pad's level (no higher than this above its center)
   elbowDrop: 0.1,    // hook: elbow no more than this far below the shoulder
   bentMax: 0.92,     // hook/uppercut: arm no straighter than this (no straight-arm swings)
   snap: 2.2,         // peak fist speed (shoulder widths per second) for a crisp punch

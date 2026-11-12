@@ -26,7 +26,7 @@ function titleFor(rating) {
 }
 
 // How well you boxed, whatever the round length: accuracy counts most, then
-// timing, then form (clean punches rather than sloppy ones, camera rounds
+// speed (PERFECT/GREAT/GOOD), then form (clean punches rather than sloppy ones, camera rounds
 // only), then defense (when the coach threw anything back). Rounds with too few
 // pads to judge get no grade.
 export function gradeFor(r, { tapMode = false } = {}) {
@@ -186,16 +186,15 @@ export function cornerNotes(r, { tapMode, dodges }) {
     }
   }
 
-  // Timing.
+  // Speed: how soon after a pad showed up you hit it.
   if (r.hits >= 5) {
-    const bias = r.timingBias || 0;
+    const secs = (ms) => `${(ms / 1000).toFixed(2)} s`;
     const perfectShare = r.perfect / r.hits;
-    if (bias < -70) work.push({ w: (-bias / 40) * Math.min(1, r.hits / 15), text: `You were punching early, by about ${Math.round(-bias / 10) * 10} ms. Let the white ring close onto the pad, then hit.` });
-    else if (bias > 70) work.push({ w: (bias / 40) * Math.min(1, r.hits / 15), text: `You were punching late, by about ${Math.round(bias / 10) * 10} ms. Start the punch as the ring is about to touch the pad.` });
-    else if (perfectShare < 0.4) work.push({ w: (0.4 - perfectShare) * 12, text: `${pct(perfectShare)} of your hits were PERFECT. Land the punch right as the ring touches the pad: PERFECT is worth 3 times a GOOD.` });
-    if (perfectShare >= 0.6) good.push({ w: perfectShare * 10, text: `Great timing: ${pct(perfectShare)} of your hits were PERFECT.` });
+    const react = r.reaction || 0;
+    if (react > 900) work.push({ w: (react - 700) / 60, text: `You took ${secs(react)} on average to hit a pad. Punch as soon as it pops up: the faster the hit, the more it scores.` });
+    else if (perfectShare < 0.4) work.push({ w: (0.4 - perfectShare) * 12, text: `${pct(perfectShare)} of your hits were PERFECT. Hit within about half a second of the pad showing up: PERFECT is worth 3 times a GOOD.` });
+    if (perfectShare >= 0.6 || (react && react <= 600)) good.push({ w: perfectShare * 10, text: `Fast hands: ${secs(react)} on average from pad to punch.` });
   }
-  if ((r.early || 0) >= 3 && r.early >= 0.08 * r.total) work.push({ w: r.early * 0.8, text: `${r.early} ${tapMode ? 'taps' : 'punches'} came before the pad lit up. Wait for it to glow.` });
 
   // Technique: swings that weren't punches, and sloppy ones.
   if (!tapMode) {
