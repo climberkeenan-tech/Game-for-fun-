@@ -26,21 +26,18 @@ function titleFor(rating) {
 }
 
 // How well you boxed, whatever the round length: accuracy counts most, then
-// speed (PERFECT/GREAT/GOOD), then form (the average quality of your punches,
-// camera rounds only), then defense (when the coach threw anything back).
-// Rounds with too few pads to judge get no grade.
-export function gradeFor(r, { tapMode = false } = {}) {
+// speed (PERFECT/GREAT/GOOD), then defense (when the coach threw anything
+// back). Rounds with too few pads to judge get no grade.
+export function gradeFor(r) {
   if (r.total < 8) return null;
   const accuracy = r.hits / r.total;
   const timing = r.hits ? (r.perfect + 0.7 * r.great + 0.4 * r.good) / r.hits : 0;
-  const form = r.hits ? r.quality ?? (r.clean ?? r.hits) / r.hits : 0;
   const parts = [[0.4, accuracy], [0.25, timing]];
-  if (!tapMode) parts.push([0.2, form]);
   if (r.ducks > 0) parts.push([0.15, r.slips / r.ducks]);
   const weight = parts.reduce((a, [w]) => a + w, 0);
   const rating = Math.round((100 * parts.reduce((a, [w, v]) => a + w * v, 0)) / weight);
   const letter = LETTERS.find(([min]) => rating >= min)[1];
-  return { letter, rating, title: titleFor(rating), accuracy, timing, form };
+  return { letter, rating, title: titleFor(rating), accuracy, timing };
 }
 
 // ---------------------------------------------------------------- leaderboard
@@ -196,24 +193,6 @@ export function cornerNotes(r, { tapMode, dodges }) {
     if (perfectShare >= 0.6 || (react && react <= 600)) good.push({ w: perfectShare * 10, text: `Fast hands: ${secs(react)} on average from pad to punch.` });
   }
 
-  // Technique: the wrong hand, swings that weren't punches, and sloppy ones.
-  if (!tapMode) {
-    const f = r.flaws || {};
-    if ((f.hand || 0) >= 2) work.push({ w: f.hand * 1.6, text: `${f.hand} punches came from the wrong hand, for half the points. Blue pads are for your left hand, red pads for your right.` });
-    const swings = (f.guard || 0) + (f.bob || 0) + (f.curve || 0) + (f.slow || 0);
-    if (swings >= 3) work.push({ w: swings * 1.1, text: `${swings} hits were swings or waves rather than punches. Start each one with your fists up by your chin, punch straight out, and bring it back.` });
-    if ((f.type || 0) >= 2) work.push({ w: f.type * 1.2, text: `${f.type} uppercut pads got a punch that didn't go up. Dip the fist a little, then drive it up through the pad.` });
-    if ((f.aim || 0) >= 3) work.push({ w: f.aim, text: `${f.aim} punches finished well wide of the pad. Aim at it: jabs and crosses up beside your head, hooks out to the side, uppercuts up the middle.` });
-    if ((f.short || 0) >= 2) work.push({ w: f.short, text: `${f.short} hooks stopped short. Swing all the way out to the pad, not just a flick from your guard.` });
-    if ((f.extend || 0) >= 2) work.push({ w: f.extend * 1.2, text: `${f.extend} jabs and crosses were sloppy: the arm didn't straighten. Drive the fist all the way out to the pad, then snap it back.` });
-    if ((f.elbow || 0) >= 2) work.push({ w: f.elbow * 1.2, text: `${f.elbow} hooks came in with the elbow low. Lift the elbow to shoulder height and swing through.` });
-    if ((f.bent || 0) >= 2) work.push({ w: f.bent * 1.2, text: `${f.bent} hooks or uppercuts were straight-arm swings. Keep the elbow bent and drive from your legs.` });
-    if ((f.snap || 0) >= 3) work.push({ w: f.snap, text: `${f.snap} punches were slow pushes. Snap them out and back.` });
-    if ((r.punches || 0) >= 8 && r.handsDown / r.punches >= 0.3) work.push({ w: (r.handsDown / r.punches) * 10, text: `Your other hand dropped on ${pct(r.handsDown / r.punches)} of your punches. Keep it up by your chin while the other one works.` });
-    const q = r.quality ?? (r.hits ? (r.clean ?? 0) / r.hits : 0);
-    if (r.hits >= 8 && q >= 0.9) good.push({ w: 9, text: `Clean technique: your punches averaged ${pct(q)} quality.` });
-  }
-
   // Defense.
   if (dodges && !tapMode && r.ducks > 0) {
     const caughtHook = r.caught?.hook || 0;
@@ -225,8 +204,8 @@ export function cornerNotes(r, { tapMode, dodges }) {
 
   // Combos and staying on your feet.
   if (r.bestCombo >= 20) good.push({ w: r.bestCombo / 4, text: `${r.bestCombo}-hit combo. That's where the big multipliers come from.` });
-  else if (r.total >= 20 && r.bestCombo < 10) work.push({ w: 3, text: `Your longest combo was ${r.bestCombo}. Every 5 in a row adds x0.25 to your points, so a clean streak beats a fast miss.` });
-  if (r.reason === 'ko') work.push({ w: 6, text: 'You got knocked down. Each missed pad costs health, and clean hits win some back, so slow down and land them.' });
+  else if (r.total >= 20 && r.bestCombo < 10) work.push({ w: 3, text: `Your longest combo was ${r.bestCombo}. Every 5 in a row adds x0.25 to your points, so a steady streak beats a fast miss.` });
+  if (r.reason === 'ko') work.push({ w: 6, text: 'You got knocked down. Each missed pad costs health, and every hit wins some back, so slow down and land them.' });
 
   work.sort((a, b) => b.w - a.w);
   good.sort((a, b) => b.w - a.w);

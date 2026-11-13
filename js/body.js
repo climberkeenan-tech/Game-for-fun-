@@ -66,7 +66,8 @@ class Hand {
     this.vy = 0;
   }
 
-  // extra: arm shape at this frame (straightness in 2D and 3D, elbow height).
+  // extra: where the body was and the arm's shape at this frame (straightness
+  // in 3D, length on screen).
   push(x, y, t, extra) {
     this.prev = this.cur;
     this.cur = { x, y, t, ...extra };
@@ -217,8 +218,8 @@ export class Body {
         fx = w.x * 0.4 + ((i.x + k.x) / 2) * 0.6;
         fy = w.y * 0.4 + ((i.y + k.y) / 2) * 0.6;
       }
-      // Arm shape, for judging punch form. Left out when the elbow or shoulder
-      // isn't tracked well enough to trust.
+      // Arm shape, for spotting punches thrown at the camera. Left out when the
+      // elbow or shoulder isn't tracked well enough to trust.
       const sh = pts[ids.shoulder];
       const el = pts[ids.elbow];
       const extra = {};
@@ -230,11 +231,9 @@ export class Body {
         extra.cy = (ls.y + rs.y) / 2;
       }
       if (sh.v > 0.5 && el.v > 0.4) {
-        extra.ext2 = straightness(sh, el, w);
         // How long the arm looks on screen: it looks much shorter when it
         // points at the camera, which backs up the 3D estimate.
         if (this.S) extra.arm2 = (Math.hypot(el.x - sh.x, el.y - sh.y) + Math.hypot(w.x - el.x, w.y - el.y)) / this.S;
-        if (this.S) extra.elbowUp = (sh.y - el.y) / this.S;
         const W3 = lms.world;
         if (W3 && W3[ids.wrist] && W3[ids.elbow] && W3[ids.shoulder]) extra.ext3 = straightness(W3[ids.shoulder], W3[ids.elbow], W3[ids.wrist]);
       }

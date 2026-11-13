@@ -511,7 +511,7 @@ function showResults() {
   const key = boardKey(settings.mode, tapMode);
   const modeName = MODE_NAMES[settings.mode] || '';
   const prevBest = bestFor(key);
-  const g = gradeFor(r, { tapMode });
+  const g = gradeFor(r);
   r.grade = g;
 
   // Leaderboard: every scoring round is offered to this device's board.
@@ -571,7 +571,7 @@ function showResults() {
   $('stPerfect').textContent = String(r.perfect);
   $('stCombo').textContent = String(r.bestCombo);
   $('stSlips').textContent = tapMode || settings.dodges !== 'on' ? 'Off' : `${r.slips} / ${r.ducks}`;
-  $('stClean').textContent = tapMode || r.quality == null ? 'n/a' : `${Math.round(r.quality * 100)}%`;
+  $('stClean').textContent = r.hits ? `${(r.reaction / 1000).toFixed(2)} s` : 'n/a';
   $('stTime').textContent = fmtTime(r.time);
   $('stSpeed').textContent = String(r.level);
 
