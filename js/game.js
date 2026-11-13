@@ -225,7 +225,7 @@ export class Game {
     this.nextSetT = null;
     if (this.dodges && !this.tapMode && L.duck > 0 && !this.lastWasDuck && this.t > 3000 && Math.random() < L.duck) {
       // The coach throws one back: a hook to roll under or a straight to slip.
-      const warn = clamp(L.window - 300, 1000, 1500);
+      const warn = clamp(L.window - 500, DUCK.warnMin, DUCK.warnMax);
       const F = this.frameOf();
       const nose = this.body && this.body.nose;
       const kind = Math.random() < 0.55 ? 'hook' : 'straight';
@@ -239,7 +239,7 @@ export class Game {
         state: 'live',
         doneT: 0,
       });
-      this.restAfter = DUCK.recover;
+      this.restAfter = L.gap + DUCK.recover;
       this.lastWasDuck = true;
       this.events.onCall?.([{ text: kind === 'hook' ? 'Duck' : 'Slip', hand: null }]);
       this.coach.say(kind === 'hook' ? 'duck' : 'slip', 1.2);
@@ -414,13 +414,16 @@ export class Game {
     // however close to the pad it is.
     const punch = this.detectPunch(key, h, F);
     if (!punch) return;
+    const judgeT = judgeAt(punch);
+    const target = this.targetFor(key, punch, judgeT, judgeAt({ t: punch.t0 }));
+    // No pad for it yet, and it's still on its way out: look again next frame
+    // (a punch with the other hand has to go a bit further to count).
+    if (!target && punch.going) return;
     // Spend the motion, whether or not there's a pad for it. The rest of a punch
     // seen on screen can't count again until the fist slows down or pulls back.
     // (One at the camera needs the arm to bend and straighten again anyway.)
     this.handUsed[key] = punch.t;
     if (!punch.depth) this.handLanded[key] = { t: h.cur.t, vx: h.vx, vy: h.vy };
-    const judgeT = judgeAt(punch);
-    const target = this.targetFor(key, punch, judgeT, judgeAt({ t: punch.t0 }));
     if (!target) return;
     this.handCooldown[key] = this.t;
     this.onHit(target, key, judgeT, this.padPos(target, F));
@@ -438,11 +441,11 @@ export class Game {
       const free = this.freeFrom(p);
       if (startT < free - PUNCH.early) continue;
       if (p.hand === key) {
-        if (!own || p.id < own.id) own = p;
+        if (!punch.cross && (!own || p.id < own.id)) own = p;
       } else if (judgeT >= free + PUNCH.wrongAfter && (!other || p.id < other.id)) other = p;
     }
     if (own) return own;
-    if (!other || !(punch.depth || punch.travel >= PUNCH.wrongTravel)) return null;
+    if (!other || !(punch.depth || Math.max(punch.travel, punch.soFar || 0) >= PUNCH.wrongTravel)) return null;
     const ok = other.hand;
     if (this.t - this.handCooldown[ok] < PUNCH.wrongQuiet) return null;
     const oh = this.body && this.body.hands[ok];
@@ -470,6 +473,8 @@ export class Game {
   // A punch seen on screen: a fast, fairly straight stroke of the fist (each
   // camera frame moving it quickly, without turning sharply) out to its own
   // side or upward, never mainly down. Pulling a fist back goes the other way.
+  // A punch across the body (cross: it only counts for the other hand's pad)
+  // moves away from where that hand sits in guard; pulling back goes toward it.
   // It counts as soon as it has gone far enough, even if it's still moving.
   strokePunch(key, path, F) {
     const S = F.S;
@@ -480,14 +485,23 @@ export class Game {
       return Math.hypot(d.x, d.y) / (Math.max(16, path[i].t - path[i - 1].t) / 1000) / S;
     };
     const side = key === 'L' ? -1 : 1; // the image is mirrored: your left hand is on the left
+    const guard = { x: F.ax + side * PUNCH.guardX * S, y: F.ay + PUNCH.guardY * S };
     const isPunch = (st, en, peak) => {
       const travel = Math.hypot(en.x - st.x, en.y - st.y) / S;
-      const out = (side * (en.x - st.x)) / S;
+      // Out to its own side. A fist coming back from across the body (after a
+      // hook) moves that way too, so that doesn't count as out.
+      const across = (side * (st.x - F.ax)) / S < -PUNCH.across;
+      const out = across ? 0 : (side * (en.x - st.x)) / S;
       const up = (st.y - en.y) / S;
       if (peak < PUNCH.speed || travel < PUNCH.travel || en.t - st.t > PUNCH.maxMs) return null;
-      if (out < PUNCH.out && up < PUNCH.up) return null;
       if (-up > PUNCH.down || (st.y - F.ay) / S > PUNCH.low || (en.y - F.ay) / S > PUNCH.end) return null;
-      return { t: en.t, t0: st.t, start: st, end: en, depth: false, travel, up, peak };
+      let cross = false;
+      if (out < PUNCH.out && up < PUNCH.up) {
+        const away = (Math.hypot(en.x - guard.x, en.y - guard.y) - Math.hypot(st.x - guard.x, st.y - guard.y)) / S;
+        if (away < PUNCH.out) return null;
+        cross = true;
+      }
+      return { t: en.t, t0: st.t, start: st, end: en, depth: false, cross, travel, up, peak };
     };
     const now = path[n - 1].t;
     let i = 1;
@@ -513,6 +527,11 @@ export class Game {
         if (!hit) hit = isPunch(path[a - 1], path[b], peak);
       }
       i = b + 1;
+      if (hit) {
+        // How far it has gone so far, and whether it's still going.
+        hit.soFar = Math.hypot(path[b].x - hit.start.x, path[b].y - hit.start.y) / S;
+        hit.going = b === n - 1;
+      }
       // Only a stroke that's still going or has only just ended: an old one
       // would have counted already if it was a punch. Nor one that runs back
       // past the start of the movement looked at, which can't be measured.

@@ -103,7 +103,10 @@ export const PUNCH = {
   speed: 1.5,      // a punch peaks at least this fast,
   travel: 0.3,     // covers at least this distance (shoulder widths)
   maxMs: 550,      // within this many ms,
-  out: 0.1,        // and ends at least this much further out to that hand's side,
+  out: 0.1,        // and ends at least this much further out to that hand's side
+  across: 0.05,    // (unless it started this far across the body: that's a fist coming back),
+  guardX: 0.3,     // A punch across the body, at the other hand's pad, moves away from where
+  guardY: -0.42,   // ...that hand sits in guard: this far to its side and above the shoulders.
   up: 0.25,        // or this much higher (an uppercut).
   down: 0.2,       // It never drops more than this,
   low: 0.7,        // starts no lower than this below the shoulders (raising your hands isn't a punch)
@@ -127,7 +130,9 @@ export const HEALTH = { start: 100, miss: 8, caught: 15, heal: { PERFECT: 3, GRE
 export const DUCK = {
   drop: 0.35,      // roll under: nose this many shoulder widths below standing height
   slip: 0.35,      // slip: nose this far to the side of where the punch was aimed
-  recover: 900,    // quiet time after a dodge before the next set
+  warnMax: 1300,   // ms from the call to the glove landing: this much when counters start,
+  warnMin: 800,    // ...down to this at the top speeds
+  recover: 300,    // quiet time after a dodge before the next set, on top of the level's gap
 };
 
 // Multiplier grows by 0.25 every 5 hits in a row, up to x4.
