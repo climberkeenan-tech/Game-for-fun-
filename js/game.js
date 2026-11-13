@@ -204,6 +204,34 @@ export class Game {
       p.shown = true;
       p.showT = this.t;
       p.endT = this.t + p.life;
+      // A pad that pops up on a fist doesn't count for that fist until it has
+      // moved off the pad.
+      p.under = this.handsOn(p);
+    }
+  }
+
+  // Which fists are on pad p right now: within its radius plus HIT.over.
+  handsOn(p) {
+    const on = { L: false, R: false };
+    if (this.tapMode || !this.body) return on;
+    const F = this.frameOf();
+    const pos = this.padPos(p, F);
+    for (const key of ['L', 'R']) {
+      const h = this.body.hands[key];
+      if (!h.visible || !h.cur) continue;
+      const s = onBody(h.cur, F);
+      on[key] = Math.hypot(s.x - pos.x, s.y - pos.y) <= pos.r + HIT.over * F.S;
+    }
+    return on;
+  }
+
+  // A fist that a pad popped up on is free to hit it once it has moved off it.
+  updateUnder(key, h, F) {
+    const s = onBody(h.cur, F);
+    for (const p of this.pads) {
+      if (p.state !== 'live' || !p.shown || !p.under || !p.under[key]) continue;
+      const pos = this.padPos(p, F);
+      if (Math.hypot(s.x - pos.x, s.y - pos.y) > pos.r + (HIT.over + HIT.leave) * F.S) p.under[key] = false;
     }
   }
 
@@ -295,6 +323,7 @@ export class Game {
         const h = this.body.hands[key];
         if (!h.visible || h.seq === this.handSeen[key]) continue;
         this.handSeen[key] = h.seq;
+        this.updateUnder(key, h, this.frameOf());
         this.tryHand(key, h);
       }
     }
@@ -355,8 +384,10 @@ export class Game {
   // ---------------------------------------------------------------- hits
 
   // Checks the fist's recent movement. A pad goes down the moment the fist
-  // moves into it with real speed, or the moment the fist is clearly throwing a
-  // punch, wherever it's aimed (punchInto, then detectPunch).
+  // moves into it with real speed (punchInto), the moment the fist is on it
+  // (onPad), or the moment the fist is clearly throwing a punch, wherever it's
+  // aimed (detectPunch). Never within HIT.minReact of the pad showing up: that's
+  // too soon to be a reaction to it.
   tryHand(key, h) {
     if (this.t - this.handCooldown[key] < HIT.cooldown) return;
     const F = this.frameOf();
@@ -392,8 +423,8 @@ export class Game {
     const now = judgeAt(newest);
     let best = null;
     for (const p of this.pads) {
-      if (p.state !== 'live' || p.hand !== key) continue;
-      const free = this.freeFrom(p);
+      if (p.state !== 'live' || p.hand !== key || !p.shown || p.under[key]) continue;
+      const free = Math.max(this.freeFrom(p), p.showT + HIT.minReact);
       if (now < free) continue;
       // Only movement since the pad showed up counts.
       let start = 0;
@@ -406,6 +437,16 @@ export class Game {
       this.handUsed[key] = best.sampleT;
       this.handLanded[key] = { t: h.cur.t, vx: h.vx, vy: h.vy };
       this.onHit(best.p, key, best.judgeT, best.pos);
+      return;
+    }
+
+    // The fist is on a pad: that counts too, however slowly it got there.
+    const on = this.onPad(key, h, F, now);
+    if (on) {
+      this.handCooldown[key] = this.t;
+      this.handUsed[key] = newest.t;
+      this.handLanded[key] = { t: h.cur.t, vx: h.vx, vy: h.vy };
+      this.onHit(on.p, key, now, on.pos);
       return;
     }
 
@@ -429,6 +470,30 @@ export class Game {
     this.onHit(target, key, judgeT, this.padPos(target, F));
   }
 
+  // Is this fist on a pad (within its radius plus HIT.over)? It has to have
+  // moved there since its last hit: a fist drifting a little in its guard
+  // doesn't count, nor one a pad just popped up on (p.under). Its own pad
+  // first, else the other hand's.
+  onPad(key, h, F, judgeNow) {
+    const s = onBody(h.cur, F);
+    let moved = 0;
+    for (const q of h.recent(HIT.moveMs, this.handUsed[key])) {
+      const b = onBody(q, F);
+      moved = Math.max(moved, Math.hypot(s.x - b.x, s.y - b.y));
+    }
+    if (moved < HIT.moveMin * F.S) return null;
+    let best = null;
+    for (const p of this.pads) {
+      if (p.state !== 'live' || !p.shown || p.under[key] || judgeNow > p.endT) continue;
+      if (judgeNow < Math.max(this.freeFrom(p), p.showT + HIT.minReact)) continue;
+      const pos = this.padPos(p, F);
+      if (Math.hypot(s.x - pos.x, s.y - pos.y) > pos.r + HIT.over * F.S) continue;
+      const rank = (p.hand === key ? 0 : 1e6) + p.id;
+      if (!best || rank < best.rank) best = { p, pos, rank };
+    }
+    return best;
+  }
+
   // Which pad a finished punch lands on: this hand's pad if it was up, else the
   // other hand's, as a wrong-hand hit, if that one has been up a while and its
   // own hand isn't busy with it. Like a fist reaching a pad, only a punch
@@ -439,7 +504,7 @@ export class Game {
     for (const p of this.pads) {
       if (p.state !== 'live' || !p.shown || judgeT > p.endT) continue;
       const free = this.freeFrom(p);
-      if (startT < free - PUNCH.early) continue;
+      if (startT < Math.max(free, p.showT + PUNCH.react) || p.under[key]) continue;
       if (p.hand === key) {
         if (!punch.cross && (!own || p.id < own.id)) own = p;
       } else if (judgeT >= free + PUNCH.wrongAfter && (!other || p.id < other.id)) other = p;
@@ -447,7 +512,9 @@ export class Game {
     if (own) return own;
     if (!other || !(punch.depth || Math.max(punch.travel, punch.soFar || 0) >= PUNCH.wrongTravel)) return null;
     const ok = other.hand;
-    if (this.t - this.handCooldown[ok] < PUNCH.wrongQuiet) return null;
+    // Neither hand just landed a pad: the rest of a punch that already took one
+    // (an uppercut's drive up after its dip, say) can't take the other hand's.
+    if (this.t - this.handCooldown[ok] < PUNCH.wrongQuiet || this.t - this.handCooldown[key] < PUNCH.wrongQuiet) return null;
     const oh = this.body && this.body.hands[ok];
     if (oh && oh.visible && oh.cur && (oh.cur.sp || 0) >= PUNCH.speed * this.frameOf().S) return null;
     return other;
@@ -571,9 +638,12 @@ export class Game {
     const st = path[k];
     const up = (st.y - B.y) / S;
     if (-up > PUNCH.down || (st.y - F.ay) / S > PUNCH.low || (B.y - F.ay) / S > PUNCH.end) return null;
-    // When it started: the last frame the arm was still near its most bent.
+    // When it started: the last frame before the arm was a quarter of the way
+    // straight in 3D, or a quarter of the way shorter on screen, whichever is
+    // later (the 3D estimate is noisy enough to put its lowest point anywhere).
     let t0 = st.t;
-    for (let j = k; j < n - 2; j++) if (e[j] != null && e[j] <= e[k] + 0.04) t0 = path[j].t;
+    for (let j = k; j < n - 2; j++) if (e[j] != null && e[j] <= e[k] + 0.25 * (hi - e[k])) t0 = path[j].t;
+    for (let j = 1; j < n - 2; j++) if (a2[j] != null && A.t - path[j].t <= PUNCH.riseMs && a2[j] >= long - 0.25 * (long - short)) t0 = Math.max(t0, path[j].t);
     return { t: B.t, t0, start: st, end: B, depth: true, up, travel: Math.hypot(B.x - st.x, B.y - st.y) / S };
   }
 

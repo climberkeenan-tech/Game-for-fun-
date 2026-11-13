@@ -2,14 +2,16 @@
 // player's shoulder joints on screen, so pads scale with how far away you stand.
 // Pad offsets are measured from the midpoint between the shoulders.
 // x is outward toward the punching hand's side, y is down (negative = up).
+// Every pad sits well clear of where the fists rest in guard (about x 0.3,
+// y -0.42), so a resting or shifting guard never sets one off.
 
 export const PUNCHES = {
   1: { tag: 'Jab',   role: 'lead', x: 0.78, y: -0.8, kind: 'straight' },
   2: { tag: 'Cross', role: 'rear', x: 0.78, y: -0.8, kind: 'straight' },
   3: { tag: 'Hook',  role: 'lead', x: 1.35, y: -0.55, kind: 'hook' },
   4: { tag: 'Hook',  role: 'rear', x: 1.35, y: -0.55, kind: 'hook' },
-  5: { tag: 'Upper', role: 'lead', x: 0.42, y: 0.08,  kind: 'upper' },
-  6: { tag: 'Upper', role: 'rear', x: 0.42, y: 0.08,  kind: 'upper' },
+  5: { tag: 'Upper', role: 'lead', x: 0.55, y: 0.3,   kind: 'upper' },
+  6: { tag: 'Upper', role: 'rear', x: 0.55, y: 0.3,   kind: 'upper' },
 };
 
 // Pad size on screen, as a share of shoulder width. The cap only stops pads
@@ -67,7 +69,12 @@ export const SPOKEN = ['', 'one', 'two', 'three', 'four', 'five', 'six'];
 // counts movement that starts after the previous pad was hit, so one punch, its
 // follow-through, or the other hand moving with it can't take a second pad.
 export const HIT = {
-  popIn: 140,      // ms a pad takes to pop in when it shows up (it can be hit right away)
+  popIn: 140,      // ms a pad takes to pop in when it shows up
+  minReact: 150,   // nothing counts for a pad this soon after it shows up: too soon to be a reaction
+  over: 0.03,      // a fist on a pad: its center inside the pad's circle (plus this, shoulder widths) counts,
+  moveMin: 0.2,    // ...if the fist moved at least this far (shoulder widths)
+  moveMs: 500,     // ...in the last this many ms to get there (a fist resting or shifting in its guard doesn't count),
+  leave: 0.05,     // and a pad that popped up on a fist counts for it once it's this far off the pad
   inputLag: 70,    // camera + tracking delay subtracted before judging timing
   perfect: 650,    // hit within this many ms of the pad showing up for PERFECT (at most 45% of its window)
   great: 1000,     // ...within this for GREAT (at most 75% of its window), otherwise GOOD
@@ -115,9 +122,9 @@ export const PUNCH = {
   straight3: 0.8,  // ...to at least this straight (on two frames in a row)...
   riseMs: 400,     // ...within this many ms, while on screen the arm looks
   shorten: 0.2,    // ...at least this much shorter (it points at the camera).
-  early: 50,       // a punch counts for a pad if it started no more than this many ms before the pad showed up
+  react: 100,      // a punch counts for a pad only if it started at least this many ms after the pad showed up
   wrongAfter: 250, // A punch with the other hand takes a pad only once it has been up this long,
-  wrongQuiet: 400, // ...while its own hand hasn't landed anything for this long,
+  wrongQuiet: 600, // ...while neither hand has landed anything for this long (an uppercut takes about that),
   wrongTravel: 0.4, // ...and only a full punch (this far on screen, or at the camera).
 };
 
