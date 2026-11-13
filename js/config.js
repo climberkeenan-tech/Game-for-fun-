@@ -72,9 +72,9 @@ export const HIT = {
   popIn: 140,      // ms a pad takes to pop in when it shows up
   minReact: 150,   // nothing counts for a pad this soon after it shows up: too soon to be a reaction
   over: 0.03,      // a fist on a pad: its center inside the pad's circle (plus this, shoulder widths) counts,
-  moveMin: 0.2,    // ...if the fist moved at least this far (shoulder widths)
-  moveMs: 500,     // ...in the last this many ms to get there (a fist resting or shifting in its guard doesn't count),
-  leave: 0.05,     // and a pad that popped up on a fist counts for it once it's this far off the pad
+  moveMin: 0.3,    // ...if since the pad showed up it closed in on the pad's middle by this much (shoulder widths)
+  moveMs: 500,     // ...within the last this many ms (a resting or shifting fist, or one pulling back, doesn't count),
+  upperDown: 0.8,  // ...and, on an uppercut pad, isn't going down faster than this (shoulder widths/s)
   inputLag: 70,    // camera + tracking delay subtracted before judging timing
   perfect: 650,    // hit within this many ms of the pad showing up for PERFECT (at most 45% of its window)
   great: 1000,     // ...within this for GREAT (at most 75% of its window), otherwise GOOD

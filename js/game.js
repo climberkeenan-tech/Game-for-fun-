@@ -204,34 +204,6 @@ export class Game {
       p.shown = true;
       p.showT = this.t;
       p.endT = this.t + p.life;
-      // A pad that pops up on a fist doesn't count for that fist until it has
-      // moved off the pad.
-      p.under = this.handsOn(p);
-    }
-  }
-
-  // Which fists are on pad p right now: within its radius plus HIT.over.
-  handsOn(p) {
-    const on = { L: false, R: false };
-    if (this.tapMode || !this.body) return on;
-    const F = this.frameOf();
-    const pos = this.padPos(p, F);
-    for (const key of ['L', 'R']) {
-      const h = this.body.hands[key];
-      if (!h.visible || !h.cur) continue;
-      const s = onBody(h.cur, F);
-      on[key] = Math.hypot(s.x - pos.x, s.y - pos.y) <= pos.r + HIT.over * F.S;
-    }
-    return on;
-  }
-
-  // A fist that a pad popped up on is free to hit it once it has moved off it.
-  updateUnder(key, h, F) {
-    const s = onBody(h.cur, F);
-    for (const p of this.pads) {
-      if (p.state !== 'live' || !p.shown || !p.under || !p.under[key]) continue;
-      const pos = this.padPos(p, F);
-      if (Math.hypot(s.x - pos.x, s.y - pos.y) > pos.r + (HIT.over + HIT.leave) * F.S) p.under[key] = false;
     }
   }
 
@@ -323,7 +295,6 @@ export class Game {
         const h = this.body.hands[key];
         if (!h.visible || h.seq === this.handSeen[key]) continue;
         this.handSeen[key] = h.seq;
-        this.updateUnder(key, h, this.frameOf());
         this.tryHand(key, h);
       }
     }
@@ -423,7 +394,7 @@ export class Game {
     const now = judgeAt(newest);
     let best = null;
     for (const p of this.pads) {
-      if (p.state !== 'live' || p.hand !== key || !p.shown || p.under[key]) continue;
+      if (p.state !== 'live' || p.hand !== key || !p.shown) continue;
       const free = Math.max(this.freeFrom(p), p.showT + HIT.minReact);
       if (now < free) continue;
       // Only movement since the pad showed up counts.
@@ -441,7 +412,7 @@ export class Game {
     }
 
     // The fist is on a pad: that counts too, however slowly it got there.
-    const on = this.onPad(key, h, F, now);
+    const on = this.onPad(key, h, F, judgeAt);
     if (on) {
       this.handCooldown[key] = this.t;
       this.handUsed[key] = newest.t;
@@ -470,24 +441,32 @@ export class Game {
     this.onHit(target, key, judgeT, this.padPos(target, F));
   }
 
-  // Is this fist on a pad (within its radius plus HIT.over)? It has to have
-  // moved there since its last hit: a fist drifting a little in its guard
-  // doesn't count, nor one a pad just popped up on (p.under). Its own pad
-  // first, else the other hand's.
-  onPad(key, h, F, judgeNow) {
+  // Is this fist on a pad (its dot inside the circle, plus HIT.over)? It has
+  // to have come in onto it since the pad showed up: closed in on the pad's
+  // middle by HIT.moveMin. So a pad that pops up on a resting fist doesn't
+  // count, nor a fist pulling back across a pad, nor a guard shifting a
+  // little; and an uppercut pad doesn't count a fist going down through it
+  // (lowering an arm). Its own pad first, else the other hand's.
+  onPad(key, h, F, judgeAt) {
     const s = onBody(h.cur, F);
-    let moved = 0;
-    for (const q of h.recent(HIT.moveMs, this.handUsed[key])) {
-      const b = onBody(q, F);
-      moved = Math.max(moved, Math.hypot(s.x - b.x, s.y - b.y));
-    }
-    if (moved < HIT.moveMin * F.S) return null;
+    const now = judgeAt(h.cur);
+    const recent = h.recent(HIT.moveMs, this.handUsed[key]);
     let best = null;
     for (const p of this.pads) {
-      if (p.state !== 'live' || !p.shown || p.under[key] || judgeNow > p.endT) continue;
-      if (judgeNow < Math.max(this.freeFrom(p), p.showT + HIT.minReact)) continue;
+      if (p.state !== 'live' || !p.shown || now > p.endT) continue;
+      const free = this.freeFrom(p);
+      if (now < Math.max(free, p.showT + HIT.minReact)) continue;
       const pos = this.padPos(p, F);
-      if (Math.hypot(s.x - pos.x, s.y - pos.y) > pos.r + HIT.over * F.S) continue;
+      const d = Math.hypot(s.x - pos.x, s.y - pos.y);
+      if (d > pos.r + HIT.over * F.S) continue;
+      let far = 0;
+      for (const q of recent) {
+        if (judgeAt(q) < free) continue;
+        const b = onBody(q, F);
+        far = Math.max(far, Math.hypot(b.x - pos.x, b.y - pos.y));
+      }
+      if (far - d < HIT.moveMin * F.S) continue;
+      if (p.kind === 'upper' && (h.cur.vy || 0) > HIT.upperDown * F.S) continue;
       const rank = (p.hand === key ? 0 : 1e6) + p.id;
       if (!best || rank < best.rank) best = { p, pos, rank };
     }
@@ -504,7 +483,7 @@ export class Game {
     for (const p of this.pads) {
       if (p.state !== 'live' || !p.shown || judgeT > p.endT) continue;
       const free = this.freeFrom(p);
-      if (startT < Math.max(free, p.showT + PUNCH.react) || p.under[key]) continue;
+      if (startT < Math.max(free, p.showT + PUNCH.react)) continue;
       if (p.hand === key) {
         if (!punch.cross && (!own || p.id < own.id)) own = p;
       } else if (judgeT >= free + PUNCH.wrongAfter && (!other || p.id < other.id)) other = p;
